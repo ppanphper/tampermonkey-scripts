@@ -2,12 +2,13 @@
 // @name         ChatGPT/Claude/Gemini Bulk Chat Deleter
 // @namespace    https://github.com/BulkChatDeleter
 // @version      1.4.0
-// @description  Batch delete ChatGPT, Claude and DeepSeek conversations, plus Gemini chats and Notebooks from the Gemini page.
+// @description  Batch delete ChatGPT, Claude, DeepSeek and Grok conversations, plus Gemini chats and Notebooks from the Gemini page.
 // @author       KiraKiraAyu（原作者）/ ppanphper 修改
 // @match        https://chatgpt.com/*
 // @match        https://gemini.google.com/*
 // @match        https://claude.ai/*
 // @match        https://chat.deepseek.com/*
+// @match        https://grok.com/*
 // @grant        none
 // @run-at       document-idle
 // @license      MIT
@@ -25,6 +26,7 @@
     if (h === "gemini.google.com") return "gemini";
     if (h === "claude.ai") return "claude";
     if (h === "chat.deepseek.com") return "deepseek";
+    if (h === "grok.com") return "grok";
     return null;
   })();
 
@@ -37,11 +39,14 @@
 
   const CONFIGS = {
     chatgpt: {
+      // ChatGPT renders a narrow app rail (nav.group/sidebar-rail) before the
+      // chat history nav. It is visible but holds no chats, so prefer the nav
+      // that contains conversation links and never fall back to the rail.
       sidebar: [
         'nav[aria-label="Chat history"]',
-        'nav[class*="sidebar"]',
         'nav:has(a[href^="/c/"])',
-        "nav",
+        'nav[class*="sidebar"]:not([class*="sidebar-rail"])',
+        'nav:not([class*="sidebar-rail"])',
       ],
       item: [
         '.sidebar-item:has(a[href^="/c/"])',
@@ -61,20 +66,20 @@
         'button[aria-label*="options" i]',
         "button.__menu-item-trailing-btn",
       ],
+      // The current menu has no test ids; Delete is the only `text-danger`
+      // item and the dialog's only submit button, in every UI language. No
+      // textMatch, so each selector must match nothing but the target.
       deleteMenuItem: {
         selectors: [
-          '[role="menuitem"]',
-          'button[role="menuitem"]',
-          '[data-testid*="delete"]',
+          '[role="menuitem"].text-danger',
+          '[role="menuitem"][data-testid*="delete"]',
         ],
-        textMatch: /delete/i,
       },
       confirmButton: {
         selectors: [
           'button[data-testid="delete-conversation-confirm-button"]',
-          '[role="dialog"] button',
+          '[role="dialog"] button[type="submit"]',
         ],
-        textMatch: /delete/i,
       },
       toolbarPrepend: true,
       toolbarAnchor: [
@@ -216,6 +221,33 @@
       stepDelay: 300,
       deletionDelay: 800,
     },
+
+    grok: {
+      // Grok rows are <button>s without hrefs inside the "recent" section;
+      // bots and projects live in sibling sections and are never targeted.
+      sidebar: ['aside:has([data-reorder-item="recent"])'],
+      item: [
+        '[data-reorder-item="recent"] div:has(> button[draggable="true"]):has(> span button[aria-haspopup="menu"])',
+      ],
+      itemLink: [],
+      getItemId: getReactKeyId,
+      menuTrigger: ['button[aria-haspopup="menu"]'],
+      // Grok only offers archive (a soft delete: DELETE
+      // /rest/app-chat/conversations/soft/{id}); archived chats can be
+      // restored for 30 days. Match it by icon so any UI language works.
+      deleteMenuItem: {
+        selectors: ['[role="menuitem"]:has(use[href*="-archive"])'],
+      },
+      // The confirm button comes first in the dialog and Cancel last.
+      confirmButton: {
+        strategy: "first-dialog-button",
+        selectors: [],
+      },
+      toolbarInsertBefore: '[data-reorder-item="recent"]',
+      toolbarAnchor: [],
+      stepDelay: 300,
+      deletionDelay: 800,
+    },
   };
 
   const cfg = CONFIGS[PLATFORM];
@@ -301,10 +333,33 @@
     return trySelector(itemConfig.itemLink, itemEl);
   }
 
+  const UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  // For rows without an href (Grok), the conversation id is only exposed as
+  // the React key of an ancestor component. The nearest UUID key walking up
+  // the fiber tree belongs to the row itself.
+  function getReactKeyId(el) {
+    const fiberKey = Object.keys(el).find((k) => k.startsWith("__reactFiber$"));
+    let fiber = fiberKey ? el[fiberKey] : null;
+    for (let depth = 0; fiber && depth < 25; depth++, fiber = fiber.return) {
+      if (typeof fiber.key === "string" && UUID_RE.test(fiber.key))
+        return fiber.key;
+    }
+    return null;
+  }
+
+  // Returns null when a config with getItemId cannot identify the row, so the
+  // row is never selectable rather than matched by a guess.
   function getItemIdentity(itemEl, itemConfig) {
     const link = findItemLink(itemEl, itemConfig);
     if (link?.getAttribute("href"))
       return { type: "href", value: link.getAttribute("href") };
+
+    if (itemConfig.getItemId) {
+      const id = itemConfig.getItemId(itemEl);
+      return id ? { type: "id", value: id } : null;
+    }
 
     const title = itemEl
       .querySelector('.title, .title-text, [data-test-id="card-title"]')
@@ -329,6 +384,11 @@
         (item) =>
           findItemLink(item, itemConfig)?.getAttribute("href") ===
           identity.value,
+      );
+    }
+    if (identity.type === "id") {
+      return items.find(
+        (item) => itemConfig.getItemId(item) === identity.value,
       );
     }
     return (
@@ -370,6 +430,7 @@
   }
 
   function findByText(config, root = document) {
+    if (!config.selectors.length) return null;
     const candidates = root.querySelectorAll(config.selectors.join(", "));
     for (const el of candidates) {
       const searchableText = [
@@ -444,19 +505,19 @@
     return style.display !== "none" && style.visibility !== "hidden";
   }
 
-  function findLastDialogButton() {
+  // Enabled buttons of the topmost visible dialog, in DOM order.
+  function getTopDialogButtons() {
     const dialogs = Array.from(
       document.querySelectorAll(
         '[role="dialog"], [role="alertdialog"], mat-dialog-container',
       ),
     ).filter(isVisibleAndEnabled);
     const dialog = dialogs[dialogs.length - 1];
-    if (!dialog) return null;
+    if (!dialog) return [];
 
-    const buttons = Array.from(dialog.querySelectorAll("button")).filter(
+    return Array.from(dialog.querySelectorAll("button")).filter(
       isVisibleAndEnabled,
     );
-    return buttons[buttons.length - 1] || null;
   }
 
   function findDialogConfirmButton() {
@@ -494,7 +555,9 @@
       if (confirmConfig.strategy === "dialog-confirm-button") {
         el = findDialogConfirmButton();
       } else if (confirmConfig.strategy === "last-dialog-button") {
-        el = findLastDialogButton();
+        el = getTopDialogButtons().at(-1);
+      } else if (confirmConfig.strategy === "first-dialog-button") {
+        el = getTopDialogButtons()[0];
       }
       if (!el) el = findByText(confirmConfig, document.body);
       // Wait for button to exist AND not be disabled — some sites (e.g. Claude)
@@ -923,6 +986,8 @@
     items.forEach((item, idx) => {
       // Skip if checkbox already exists
       if (item.querySelector(".bcd-checkbox")) return;
+      // Rows that cannot be identified reliably are not offered for deletion
+      if (itemConfig.getItemId && !itemConfig.getItemId(item)) return;
 
       // Set relative positioning if needed
       const computed = getComputedStyle(item);
@@ -987,15 +1052,15 @@
       Array.from(item.querySelectorAll(".bcd-checkbox:checked")),
     );
     return checkboxes
-      .map((cb) => ({
-        checkbox: cb,
-        itemEl: cb.closest(itemConfig.item.join(", ")),
-        identity: getItemIdentity(
-          cb.closest(itemConfig.item.join(", ")),
-          itemConfig,
-        ),
-      }))
-      .filter((item) => item.itemEl);
+      .map((cb) => {
+        const itemEl = cb.closest(itemConfig.item.join(", "));
+        return {
+          checkbox: cb,
+          itemEl,
+          identity: itemEl && getItemIdentity(itemEl, itemConfig),
+        };
+      })
+      .filter((item) => item.itemEl && item.identity);
   }
 
   function updateDeleteButton() {
@@ -1230,9 +1295,16 @@
       document.addEventListener("change", (e) => {
         if (e.target.matches(".bcd-checkbox")) updateDeleteButton();
       });
-      sidebarElement = await waitForSidebar();
-      await injectToolbar();
+      // Observe first so the toolbar still appears if the sidebar is
+      // collapsed at load and opened after waitForSidebar gives up.
       setupSidebarObserver();
+      try {
+        sidebarElement = await waitForSidebar();
+      } catch (err) {
+        console.warn("[BCD] Sidebar not visible yet; waiting for it to open");
+        return;
+      }
+      await injectToolbar();
       console.log("[BCD] Initialization complete");
     } catch (err) {
       console.error("[BCD] Initialization failed:", err);
