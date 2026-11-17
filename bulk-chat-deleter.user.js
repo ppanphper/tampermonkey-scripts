@@ -1,17 +1,19 @@
 // ==UserScript==
 // @name         ChatGPT/Claude/Gemini Bulk Chat Deleter
 // @namespace    https://github.com/BulkChatDeleter
-// @version      1.3.0
-// @description  Batch delete ChatGPT and Claude conversations, plus Gemini chats and Notebooks from the Gemini page.
-// @author       KiraKiraAyu
+// @version      1.4.0
+// @description  Batch delete ChatGPT, Claude and DeepSeek conversations, plus Gemini chats and Notebooks from the Gemini page.
+// @author       KiraKiraAyu（原作者）/ ppanphper 修改
 // @match        https://chatgpt.com/*
 // @match        https://gemini.google.com/*
 // @match        https://claude.ai/*
+// @match        https://chat.deepseek.com/*
 // @grant        none
 // @run-at       document-idle
 // @license      MIT
-// @downloadURL https://update.greasyfork.org/scripts/588305/ChatGPTClaudeGemini%20Bulk%20Chat%20Deleter.user.js
-// @updateURL https://update.greasyfork.org/scripts/588305/ChatGPTClaudeGemini%20Bulk%20Chat%20Deleter.meta.js
+// @homepage     https://github.com/ppanphper/tampermonkey-scripts
+// @updateURL    https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/bulk-chat-deleter.user.js
+// @downloadURL  https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/bulk-chat-deleter.user.js
 // ==/UserScript==
 
 (async function BulkChatDeleter() {
@@ -22,6 +24,7 @@
     if (h === "chatgpt.com") return "chatgpt";
     if (h === "gemini.google.com") return "gemini";
     if (h === "claude.ai") return "claude";
+    if (h === "chat.deepseek.com") return "deepseek";
     return null;
   })();
 
@@ -186,6 +189,33 @@
       stepDelay: 350,
       deletionDelay: 1500,
     },
+
+    deepseek: {
+      // DeepSeek uses hashed CSS-module class names; only the `ds-` design
+      // system classes and the `/chat/s/` hrefs are stable. The sidebar has no
+      // nav/aside, so match the panel whose direct child scroll area lists chats.
+      sidebar: ['div:has(> .ds-scroll-area a[href*="/chat/s/"])'],
+      // Each conversation row is the <a> itself.
+      item: ['a[href*="/chat/s/"]'],
+      itemLink: ['a[href*="/chat/s/"]'],
+      menuTrigger: ['[role="button"]', ".ds-button"],
+      // The delete option and confirm button are the only error-styled
+      // controls, which keeps matching independent of the UI language. No
+      // textMatch: every candidate matching the selectors is accepted.
+      deleteMenuItem: {
+        selectors: [".ds-dropdown-menu-option--error"],
+      },
+      confirmButton: {
+        selectors: ['[role="dialog"] .ds-button--error'],
+      },
+      toolbarInsertBefore: '.ds-scroll-area:has(a[href*="/chat/s/"])',
+      toolbarAnchor: [],
+      // DeepSeek sets body text to purple and colors each element through
+      // theme variables, so `color: inherit` would be unreadable.
+      toolbarColor: "var(--dsw-alias-label-primary)",
+      stepDelay: 300,
+      deletionDelay: 800,
+    },
   };
 
   const cfg = CONFIGS[PLATFORM];
@@ -265,8 +295,14 @@
       : [];
   }
 
+  // Some platforms (e.g. DeepSeek) render the row itself as the link.
+  function findItemLink(itemEl, itemConfig) {
+    if (itemConfig.itemLink.some((sel) => itemEl.matches(sel))) return itemEl;
+    return trySelector(itemConfig.itemLink, itemEl);
+  }
+
   function getItemIdentity(itemEl, itemConfig) {
-    const link = trySelector(itemConfig.itemLink, itemEl);
+    const link = findItemLink(itemEl, itemConfig);
     if (link?.getAttribute("href"))
       return { type: "href", value: link.getAttribute("href") };
 
@@ -289,8 +325,10 @@
   function findItemByIdentity(identity, itemConfig) {
     const items = getTargetItems(itemConfig);
     if (identity.type === "href") {
-      return items.find((item) =>
-        item.querySelector(`a[href="${CSS.escape(identity.value)}"]`),
+      return items.find(
+        (item) =>
+          findItemLink(item, itemConfig)?.getAttribute("href") ===
+          identity.value,
       );
     }
     return (
@@ -347,6 +385,7 @@
       ]
         .filter(Boolean)
         .join(" ");
+      if (!config.textMatch) return el;
       config.textMatch.lastIndex = 0;
       if (config.textMatch.test(searchableText)) return el;
     }
@@ -674,7 +713,10 @@
     try {
 
     // Build toolbar without innerHTML to satisfy Trusted Types CSP (e.g. Gemini)
-    const toolbar = createEl("div", { id: "bcd-toolbar" });
+    const toolbar = createEl("div", {
+      id: "bcd-toolbar",
+      style: cfg.toolbarColor ? { color: cfg.toolbarColor } : {},
+    });
 
     const toggleBtn = createEl("button", { id: "bcd-toggle-btn" }, [
       createEl("span", { style: { fontSize: "15px" } }, ["🗑"]),
