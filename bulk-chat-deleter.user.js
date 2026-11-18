@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT/Claude/Gemini Bulk Chat Deleter
 // @namespace    https://github.com/BulkChatDeleter
-// @version      1.4.1
+// @version      1.4.2
 // @description  Batch delete ChatGPT, Claude, DeepSeek and Grok conversations, plus Gemini chats and Notebooks from the Gemini page.
 // @author       KiraKiraAyu（原作者）/ ppanphper 修改
 // @match        https://chatgpt.com/*
@@ -597,6 +597,15 @@
         padding: 6px 12px;
       }
 
+      #bcd-toolbar.bcd-floating {
+        position: fixed;
+        bottom: 8px;
+        z-index: 2147483000;
+        border: 1px solid rgba(128, 128, 128, 0.3);
+        border-radius: 8px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+      }
+
       #bcd-toggle-btn {
         display: flex;
         align-items: center;
@@ -773,6 +782,57 @@
     return el;
   }
 
+  // The toolbar only fits where it stacks above its siblings; inside a flex
+  // row or a grid it becomes a column that squeezes the sidebar.
+  // `display: contents` boxes leave layout to their nearest real ancestor.
+  function stacksVertically(el) {
+    while (el && getComputedStyle(el).display === "contents") {
+      el = el.parentElement;
+    }
+    if (!el) return false;
+    const { display, flexDirection } = getComputedStyle(el);
+    if (["block", "flow-root", "list-item"].includes(display)) return true;
+    return /^(inline-)?flex$/.test(display) && flexDirection.startsWith("column");
+  }
+
+  // The sidebar itself, otherwise its first descendant that stacks
+  // vertically, spans most of the sidebar and holds content (which rules out
+  // icon wrappers and empty spacers).
+  function findStackingContainer(root) {
+    if (stacksVertically(root)) return root;
+    const minWidth = root.getBoundingClientRect().width * 0.8;
+    return (
+      Array.from(root.querySelectorAll("*")).find(
+        (el) =>
+          el.children.length >= 2 &&
+          el.getBoundingClientRect().width >= minWidth &&
+          stacksVertically(el),
+      ) || null
+    );
+  }
+
+  // Last resort: a fixed toolbar covers a corner of the sidebar instead of
+  // squeezing its layout. The nearest opaque background keeps it readable.
+  function floatToolbar(toolbar) {
+    const rect = sidebarElement.getBoundingClientRect();
+    let background = "Canvas";
+    for (let el = sidebarElement; el; el = el.parentElement) {
+      const color = getComputedStyle(el).backgroundColor;
+      if (!/^transparent$|^rgba\(.*,\s*0\)$/.test(color)) {
+        background = color;
+        break;
+      }
+    }
+    toolbar.classList.add("bcd-floating");
+    Object.assign(toolbar.style, {
+      left: `${Math.max(rect.left, 0) + 8}px`,
+      width: `${Math.min(Math.max(rect.width - 16, 200), 280)}px`,
+      background,
+      color: cfg.toolbarColor || getComputedStyle(sidebarElement).color,
+    });
+    document.body.appendChild(toolbar);
+  }
+
   async function injectToolbar() {
     if (document.getElementById("bcd-toolbar") || injectingToolbar) return;
     if (!sidebarElement || !document.contains(sidebarElement)) return;
@@ -871,9 +931,13 @@
           sidebarElement,
           10000,
         );
-        if (anchor?.parentElement) {
+        if (stacksVertically(anchor.parentElement)) {
           insertionParent = anchor.parentElement;
           insertionBefore = anchor;
+        } else {
+          console.warn(
+            "[BCD] toolbarInsertBefore anchor is not in a vertical container, using fallback",
+          );
         }
       } catch (e) {
         console.warn(
@@ -889,10 +953,7 @@
           sidebarElement,
           8000,
         );
-        if (
-          firstItem?.parentElement &&
-          getComputedStyle(firstItem.parentElement).display !== "contents"
-        ) {
+        if (stacksVertically(firstItem.parentElement)) {
           insertionParent = firstItem.parentElement;
           insertionBefore = firstItem;
         }
@@ -901,10 +962,18 @@
       }
     }
 
+    if (!insertionParent) {
+      insertionParent = findStackingContainer(sidebarElement);
+      insertionBefore = insertionParent?.firstChild ?? null;
+    }
+
     if (insertionParent) {
       insertionParent.insertBefore(toolbar, insertionBefore);
     } else {
-      sidebarElement.prepend(toolbar);
+      console.warn(
+        "[BCD] No vertical container in the sidebar, showing a floating toolbar; CONFIGS selectors need updating",
+      );
+      floatToolbar(toolbar);
     }
 
     document
@@ -1274,6 +1343,11 @@
     sidebarObserver = new MutationObserver(() => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
+        // A floating toolbar is not removed with a re-rendered sidebar, so
+        // the reference has to be refreshed here.
+        if (sidebarElement && !document.contains(sidebarElement)) {
+          sidebarElement = findVisibleSidebar() || sidebarElement;
+        }
         if (!document.getElementById("bcd-toolbar")) {
           const currentSidebar = findVisibleSidebar();
           if (currentSidebar) {
