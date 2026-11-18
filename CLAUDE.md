@@ -21,6 +21,7 @@ Conventions every script follows:
   - Sites without a strict CSP (DeepSeek): serve the worktree locally with `Access-Control-Allow-Origin: *` and evaluate `(0, eval)(await fetch('http://127.0.0.1:<port>/<file>').then(r => r.text()))`.
   - Sites whose CSP blocks localhost and `eval` (ChatGPT, Grok): put the file into a temporary `<input type=file>` (browser automation file upload), read it with `file.text()`, and append it as a `<script>` carrying the page's nonce (`[...document.scripts].map(s => s.nonce).find(Boolean)`). Compare a SHA-256 of the loaded text with the local file. Do not route the source through the system clipboard; the user may be copying at the same time.
   - If an installed copy of the same script is active on the page, remove its `#bcd-toolbar` in the same task that injects the new copy, otherwise its observer re-inserts its own toolbar first.
+  - Injecting into a page that finished loading misses load-time bugs such as ChatGPT's hydration freeze. To reproduce Tampermonkey's timing, inject in the same browser batch right after `navigate`, keep the source in `localStorage` for repeated runs, and write breadcrumbs plus a 100 ms heartbeat to `localStorage`. A frozen tab answers no automation calls; read the breadcrumbs from another tab on the same origin (for example `https://chatgpt.com/robots.txt`), then remove the test keys.
 - Scripts that delete data must be tested on throwaway items created for the test. Override `window.confirm`/`window.alert` before triggering them when driving the page through browser automation, because native dialogs block it.
 
 ## bulk-chat-deleter.user.js
@@ -35,7 +36,7 @@ Adding a site or fixing a DOM change means editing `PLATFORM` detection, `@match
 
 | Key | How it is used |
 |---|---|
-| `sidebar` | Ordered; first selector with a visible (non-zero size) match wins (`findVisibleSidebar`) |
+| `sidebar` | Ordered; first selector with a visible (non-zero size) match wins (`findVisibleSidebar`). With `waitForHydration`, only nodes React has already hydrated count |
 | `itemLink`, `menuTrigger` | Ordered fallback via `trySelector`; first match inside the item wins. `findItemLink` also accepts the item itself (DeepSeek rows are the `<a>`) |
 | `getItemId` | Optional; identifies rows that have no href (Grok uses `getReactKeyId`). Rows it cannot identify get no checkbox |
 | `item` | Joined with `", "` into one `querySelectorAll`, so every selector contributes (union) |
@@ -45,7 +46,7 @@ UI language varies per account, so prefer language-independent matches: attribut
 
 Site-specific facts that are easy to break:
 
-- ChatGPT renders a 52 px app rail (`nav.group/sidebar-rail`) before the history nav; the rail must never be chosen as the sidebar. Its delete dialog has a pre-checked "also delete files" checkbox that the script leaves alone.
+- ChatGPT renders a 52 px app rail (`nav.group/sidebar-rail`) before the history nav; the rail must never be chosen as the sidebar. The history nav (`aria-label="Home"`) is server-rendered and visible about a second before React hydrates it; inserting the toolbar in that window freezes the tab for good. `waitForHydration` makes `findVisibleSidebar` skip candidates without a `__reactFiber$` expando. Its delete dialog has a pre-checked "also delete files" checkbox that the script leaves alone.
 - Grok rows are `<button>`s with no href, and the conversation id exists only as the React `key` of an ancestor, read through the `__reactFiber$` expando. This requires Tampermonkey's default `@sandbox raw` (page MAIN_WORLD). Grok's UI only offers archive, which is a soft delete (`DELETE /rest/app-chat/conversations/soft/{id}`, restorable for 30 days); the "已归档" status filter lists them.
 
 Toolbar placement: `toolbarInsertBefore` (waits for that anchor) → otherwise, if `toolbarPrepend` is false, insert before the first `item` → otherwise prepend to the sidebar, or to its first descendant that stacks vertically and spans most of its width → otherwise a fixed toolbar floats over the sidebar's bottom-left corner. Every step only accepts a parent that `stacksVertically` (block or column flex, looking through `display: contents`); a flex row or grid would squeeze the sidebar, as Gemini's `bard-sidenav` did. A floating toolbar or a `No vertical container` warning means the selectors are stale. `toolbarColor` overrides the inherited text color (DeepSeek's `body` color is purple). `toolbarAnchor` is declared in configs but unused.
