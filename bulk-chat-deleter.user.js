@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT/Claude/Gemini Bulk Chat Deleter
 // @namespace    https://github.com/BulkChatDeleter
-// @version      1.4.2
+// @version      1.4.3
 // @description  Batch delete ChatGPT, Claude, DeepSeek and Grok conversations, plus Gemini chats and Notebooks from the Gemini page.
 // @author       KiraKiraAyu（原作者）/ ppanphper 修改
 // @match        https://chatgpt.com/*
@@ -48,6 +48,10 @@
         'nav[class*="sidebar"]:not([class*="sidebar-rail"])',
         'nav:not([class*="sidebar-rail"])',
       ],
+      // The sidebar nav is server-rendered and visible about a second before
+      // React hydrates it. Inserting the toolbar in between freezes the page,
+      // so a sidebar only counts once React has claimed it.
+      waitForHydration: true,
       item: [
         '.sidebar-item:has(a[href^="/c/"])',
         'div[data-sidebar-archive-chatgpt-id]:has(a[href^="/c/"])',
@@ -340,12 +344,17 @@
   const UUID_RE =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+  // React stores its fiber on every DOM node it has rendered or hydrated.
+  function getReactFiber(el) {
+    const fiberKey = Object.keys(el).find((k) => k.startsWith("__reactFiber$"));
+    return fiberKey ? el[fiberKey] : null;
+  }
+
   // For rows without an href (Grok), the conversation id is only exposed as
   // the React key of an ancestor component. The nearest UUID key walking up
   // the fiber tree belongs to the row itself.
   function getReactKeyId(el) {
-    const fiberKey = Object.keys(el).find((k) => k.startsWith("__reactFiber$"));
-    let fiber = fiberKey ? el[fiberKey] : null;
+    let fiber = getReactFiber(el);
     for (let depth = 0; fiber && depth < 25; depth++, fiber = fiber.return) {
       if (typeof fiber.key === "string" && UUID_RE.test(fiber.key))
         return fiber.key;
@@ -1324,6 +1333,7 @@
       try {
         const candidates = document.querySelectorAll(selector);
         for (const el of candidates) {
+          if (cfg.waitForHydration && !getReactFiber(el)) continue;
           const rect = el.getBoundingClientRect();
           if (rect.width > 0 && rect.height > 0) return el;
         }
