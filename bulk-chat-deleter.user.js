@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT/Claude/Gemini Bulk Chat Deleter
 // @namespace    https://github.com/BulkChatDeleter
-// @version      1.4.0
+// @version      1.4.1
 // @description  Batch delete ChatGPT, Claude, DeepSeek and Grok conversations, plus Gemini chats and Notebooks from the Gemini page.
 // @author       KiraKiraAyu（原作者）/ ppanphper 修改
 // @match        https://chatgpt.com/*
@@ -133,8 +133,12 @@
         textMatch: /delete/i,
       },
       // Insert before the chats expandable section inside infinite-scroller (display:block, 276px)
-      // Avoids inserting into mat-nav-list which breaks Angular Material layout
-      toolbarInsertBefore: '[data-test-id="chats-expandable-section"]',
+      // Avoids inserting into mat-nav-list which breaks Angular Material layout.
+      // Accounts without chats render an empty div.chat-history in the same
+      // slot instead; without it the toolbar falls back to prepending into
+      // bard-sidenav, a flex row, and squeezes the whole sidebar.
+      toolbarInsertBefore:
+        '[data-test-id="chats-expandable-section"], infinite-scroller > .chat-history',
       toolbarAnchor: [],
       stepDelay: 400,
       deletionDelay: 800,
