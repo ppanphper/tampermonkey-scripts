@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         Linux.do 双栏阅读预览
 // @namespace    https://linux.do/
-// @version      0.19.1
+// @version      0.19.2
 // @description  在 Linux.do 话题列表、搜索结果和通知中用右侧面板预览帖子（支持原始楼层与树状评论双视图、热门排序、回复/点赞/话题与楼层收藏/投票/时间线及阅读时长上报）
 // @match        https://linux.do/*
 // @homepageURL  https://github.com/ppanphper/tampermonkey-scripts
 // @supportURL   https://github.com/ppanphper/tampermonkey-scripts/issues
-// @updateURL    https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/linuxdo-double-column.user.js
-// @downloadURL  https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/linuxdo-double-column.user.js
+// @updateURL    https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/linuxdo-double-column/linuxdo-double-column.user.js
+// @downloadURL  https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/linuxdo-double-column/linuxdo-double-column.user.js
 // @run-at       document-start
 // @noframes
 // @grant        none

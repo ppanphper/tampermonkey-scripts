@@ -20,8 +20,8 @@
 ## 验证依据
 
 - 搜索结构来源：[Discourse 搜索结果组件](https://github.com/discourse/discourse/blob/main/frontend/discourse/app/components/search-result-entry.gjs)、[搜索页模板](https://github.com/discourse/discourse/blob/main/frontend/discourse/app/templates/full-page-search.gjs)、[搜索页样式](https://github.com/discourse/discourse/blob/main/app/assets/stylesheets/common/base/search.scss)。
-- `tests/linuxdo-double-column/search-preview.html` 运行正式事件、历史和渲染逻辑；API 全部本地模拟，不修改线上数据。
-- `tests/linuxdo-double-column/tree-preview.html` 保留原有深层回复回归。
+- `tests/search-preview.html` 运行正式事件、历史和渲染逻辑；API 全部本地模拟，不修改线上数据。
+- `tests/tree-preview.html` 保留原有深层回复回归。
 - 当前内置浏览器访问 Linux.do 搜索页跳转登录页，线上登录态及站点定制主题尚需实际安装验证。
 
 # 通知双栏预览
@@ -45,7 +45,7 @@
 
 - 结构与行为来源：[MenuItem](https://github.com/discourse/discourse/blob/main/frontend/discourse/app/components/user-menu/menu-item.gjs)、[通知项点击](https://github.com/discourse/discourse/blob/main/frontend/discourse/app/lib/user-menu/notification-item.js)、[基础点击](https://github.com/discourse/discourse/blob/main/frontend/discourse/app/lib/user-menu/base-item.js)、[wantsNewWindow](https://github.com/discourse/discourse/blob/main/frontend/discourse/app/lib/intercept-click.js)、[服务端清除](https://github.com/discourse/discourse/blob/main/app/controllers/application_controller.rb)、[通知页模板](https://github.com/discourse/discourse/blob/main/frontend/discourse/app/templates/user/notifications-index.gjs)。
 - 2026-11-13 只读核对 linux.do（Discourse 2026.11.0-latest）通知页：60 条通知均为 `li.notification > a` 且指向话题 URL；左栏 680px 时无可见溢出，424px 时个人资料头部按钮会被面板遮挡，属用户页原有布局。
-- 头像菜单打开会把通知计为已查看，未在线上打开；菜单 DOM 依据源码及 `tests/linuxdo-double-column/notification-preview.html` 验证。
+- 头像菜单打开会把通知计为已查看，未在线上打开；菜单 DOM 依据源码及 `tests/notification-preview.html` 验证。
 
 # 复制话题链接
 
@@ -54,7 +54,7 @@
 - 用户名与站点设置在点击时从 `#data-preloaded` 的 `currentUser`、`siteSettings` 读取，不硬编码；Discourse 启动后该元素仍保留，登录状态变化会整页刷新。该数据只有 `username`，需自行转为小写。2026-11-13 核对 linux.do：两个设置均开启，数据约 625KB，解析耗时数毫秒，因此不缓存。
 - slug 取自话题 JSON。加载中或加载失败时 `topicMeta` 仍属于上一个话题，此时只用当前话题 ID 和 `topic` 占位，打开后由 Discourse 重定向到规范地址。
 - 复制成功和失败沿用现有 toast；剪贴板 API 不可用时退回 `execCommand('copy')`。
-- `tests/linuxdo-double-column/search-preview.html` 验证话题与楼层链接的分享参数、设置关闭和未登录时不附加，以及加载中切换话题时复制新话题。
+- `tests/search-preview.html` 验证话题与楼层链接的分享参数、设置关闭和未登录时不附加，以及加载中切换话题时复制新话题。
 
 # 书签收藏夹
 
@@ -75,4 +75,4 @@
 
 - 改收藏夹用 `PUT /bookmarks/{id}.json`，带回 `reminder_at` 和 `auto_delete_preference`，否则提醒会被清掉。话题 JSON 不提供 `pinned`，改名后置顶状态会被 Discourse 清除（2026-11-18 在 linux.do 实测）。
 - 楼层书签优先取话题 JSON 的 `bookmarks`；缺少时用帖子的 `bookmark_id`、`bookmark_name`、`bookmark_reminder_at` 补进列表。
-- `tests/linuxdo-double-column/bookmark-folders.html` 用本地模拟接口验证上述流程。
+- `tests/bookmark-folders.html` 用本地模拟接口验证上述流程。
