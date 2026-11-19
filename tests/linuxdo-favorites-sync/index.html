@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="stale-token">
+  <title>收藏夹账号同步 · 回归验证</title>
+  <style>
+    :root { --primary:#202124; --secondary:#fff; --primary-low:#e2e5e9; --primary-medium:#6b7280; --tertiary:#176fa1; --danger:#d1453b; }
+    body { margin:0; background:#f6f7f9; color:var(--primary); font:15px/1.6 system-ui,sans-serif; }
+    .wrap { display:flex; gap:24px; max-width:1200px; margin:auto; padding:20px; }
+    #sidebar { flex:0 0 180px; }
+    #sidebar ul { list-style:none; padding:0; margin:0; }
+    main { flex:1; min-width:0; }
+    article { background:#fff; border:1px solid var(--primary-low); margin:0 0 12px; padding:12px; }
+    .post-controls .actions { display:flex; gap:8px; justify-content:flex-end; }
+    table { width:100%; background:#fff; border-collapse:collapse; }
+    td, th { border-bottom:1px solid var(--primary-low); padding:6px 8px; text-align:left; }
+    #test-status { font-weight:600; }
+    #test-results { font-size:12px; max-height:320px; overflow:auto; background:#fff; border:1px solid var(--primary-low); padding:8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <aside id="sidebar">
+      <ul id="sidebar-section-content-community">
+        <li class="sidebar-section-link-wrapper"><a class="sidebar-section-link">话题</a></li>
+      </ul>
+    </aside>
+    <main id="main-outlet" data-topic-id="105">
+      <div id="topic-title"><h1><a class="topic-link" href="/t/topic/105">本地测试话题 105</a></h1></div>
+      <span class="badge-category__name">开发调优</span>
+      <article class="topic-post" data-post-id="5501" data-post-number="1">
+        <div class="cooked"><p>105 楼主内容</p></div>
+        <nav class="post-controls"><div class="actions"><button class="post-action-menu__reply">回复</button></div></nav>
+      </article>
+      <article class="topic-post" data-post-id="5502" data-post-number="2">
+        <div class="cooked"><p>105 第二楼内容</p></div>
+        <nav class="post-controls"><div class="actions"><button class="post-action-menu__reply">回复</button></div></nav>
+      </article>
+      <div id="bookmark-list-host"></div>
+      <p>状态：<span id="test-status">运行中</span></p>
+      <pre id="test-results"></pre>
+    </main>
+  </div>
+  <script src="index.js"></script>
+</body>
+</html>
