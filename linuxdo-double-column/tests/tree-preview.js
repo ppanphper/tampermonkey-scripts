@@ -148,7 +148,7 @@
       initializeReplies([null,1,1,3]);data[1].reply_count=1;state.allPosts.set(1003,data[2]);
       delayedResponse=url=>url.pathname==='/posts/1002/replies.json'?Response.json([data[3]]):null;
       state.treeExpanded.add(2);await api.loadTreeReplies(data[1]);
-      const preview=node(2).querySelector('.ld-preview-tree-references');assert(preview?.querySelector('.ld-preview-embedded-floor').textContent==='#4','引用回复未显示');assert(data[3].reply_to_post_number===3,'原父帖被改写');assert(state.treeRepliesLoaded.has(2),'引用回复被误判不可用');
+      const preview=node(2).querySelector('.ld-preview-tree-references');assert(preview?.querySelector('.ld-preview-embedded-floor').textContent==='#4','引用回复未显示');const avatar=preview.querySelector('.ld-preview-avatar').getBoundingClientRect();assert(avatar.width===28&&avatar.height===28,`引用回复头像尺寸异常：${avatar.width}×${avatar.height}`);assert(data[3].reply_to_post_number===3,'原父帖被改写');assert(state.treeRepliesLoaded.has(2),'引用回复被误判不可用');
       api.focusTreeBranch(data[1]);node(2).querySelector('.ld-preview-embedded-jump').click();await waitUntil(()=>Boolean(article(4)));assert(state.treeFocusNumber===4,'引用回复定位失败');
     });
     await test('部分索引遗漏引用回复时补齐并按 ID 去重',async()=>{

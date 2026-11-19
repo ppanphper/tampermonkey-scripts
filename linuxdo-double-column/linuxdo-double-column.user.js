@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Linux.do 双栏阅读预览
 // @namespace    https://linux.do/
-// @version      0.19.2
+// @version      0.19.3
 // @description  在 Linux.do 话题列表、搜索结果和通知中用右侧面板预览帖子（支持原始楼层与树状评论双视图、热门排序、回复/点赞/话题与楼层收藏/投票/时间线及阅读时长上报）
 // @match        https://linux.do/*
 // @homepageURL  https://github.com/ppanphper/tampermonkey-scripts
@@ -1376,9 +1376,8 @@
       }
 
       #${PANEL_ID} .ld-preview-avatar-small {
-        width: 28px;
-        height: 28px;
-        flex: 0 0 28px;
+        /* 树状视图的引用回复位于楼层之外，需在头像自身定义尺寸变量 */
+        --ld-post-avatar-size: 28px;
       }
 
       #${PANEL_ID} .ld-preview-embedded-main {
