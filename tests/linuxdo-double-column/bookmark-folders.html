@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="test-csrf">
+  <title>正式脚本 · 书签收藏夹回归验证</title>
+  <style>
+    :root { --primary:#202124; --secondary:#fff; --primary-low:#e2e5e9; --primary-medium:#6b7280; --tertiary:#176fa1; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#f6f7f9; color:var(--primary); font:15px/1.6 system-ui,sans-serif; }
+    .d-header { height:60px; padding:14px 24px; background:#fff; border-bottom:1px solid #ddd; }
+    #main-outlet-wrapper { max-width:1200px; margin:auto; }
+    #main-outlet { padding:20px; }
+    h1 { font-size:22px; margin:0 0 12px; }
+    a { color:var(--tertiary); }
+    button { font:inherit; padding:6px 10px; }
+    #test-status { color:#126637; font-weight:600; }
+    #test-results { max-height:240px; overflow:auto; font-size:12px; }
+    .topic-list { width:100%; margin-top:16px; background:#fff; border-collapse:collapse; }
+    .topic-list td { padding:10px 12px; border-bottom:1px solid var(--primary-low); }
+  </style>
+</head>
+<body>
+  <header class="d-header">LINUX DO · 本地书签收藏夹验证</header>
+  <div id="main-outlet-wrapper"><main id="main-outlet">
+    <h1>双栏收藏与收藏夹</h1>
+    <p>使用正式脚本；书签接口为本地模拟，不访问 Linux.do。</p>
+    <button id="run-tests">运行回归验证</button>
+    <div id="test-status" role="status">正在载入正式脚本…</div>
+    <details><summary>验证记录</summary><ol id="test-results"></ol></details>
+    <table class="topic-list"><tbody>
+      <tr class="topic-list-item"><td><a id="topic-300" class="title raw-topic-link" href="/t/folder-demo/300">收藏夹演示话题</a></td></tr>
+      <tr class="topic-list-item"><td><a id="topic-400" class="title raw-topic-link" href="/t/folder-demo/400">另一个话题</a></td></tr>
+    </tbody></table>
+  </main></div>
+  <script src="bookmark-folders.js"></script>
+</body>
+</html>

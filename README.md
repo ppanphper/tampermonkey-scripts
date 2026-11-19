@@ -14,4 +14,18 @@
 - Grok 网页只提供归档，脚本执行的就是归档：会话进入已删除列表，30 天内可在 Grok 设置的资料管控 → 已删除的对话中还原，之后永久删除。
 - 已装过 Greasy Fork 原版的电脑需要打开安装地址重新安装一次，之后改由本仓库更新。`@name` 和 `@namespace` 与原版相同，正常会覆盖原版；如果扩展列表里出现两个同名脚本，删掉更新地址指向 greasyfork.org 的那个。
 
+## Linux.do 双栏阅读预览
+
+- 安装地址：<https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/linuxdo-double-column.user.js>
+- 说明：在 linux.do 话题列表、搜索结果和通知中点击标题，在右侧面板预览和交互（楼层/树状评论、回复、点赞、收藏到收藏夹、投票、时间线、阅读时长上报）。完整功能见 [docs/linuxdo-double-column.md](docs/linuxdo-double-column.md)。
+- 0.19.1 起从 [linuxdo-double-column](https://github.com/ppanphper/linuxdo-double-column) 仓库迁到这里；已安装的电脑会经旧仓库的 0.19.1 自动切换到本仓库更新，无需重装。
+
+## LinuxDo 收藏夹（账号同步版）
+
+- 安装地址：<https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/linuxdo-favorites-sync.user.js>
+- 说明：linux.do 自定义收藏夹，收藏保存为账号书签，收藏夹名写在书签名称开头（`[收藏夹] 备注`），登录同一账号的设备都能看到。基于 eamooooon 的 [LinuxDo 收藏夹](https://scriptcat.org/scripts/code/6125/LinuxDo%20%E6%94%B6%E8%97%8F%E5%A4%B9.user.js) 1.0.9 修改，原脚本未声明许可证。
+- `@name` 和 `@namespace` 与原版相同，安装后覆盖原版并保留数据；首次同步时把原版的本地收藏合并进书签，不删除任何已有书签。如果扩展列表里出现两个同名脚本，删掉更新地址指向 scriptcat.org 的那个。
+- Discourse 默认每人每天最多新建 20 个书签，超出的收藏在面板中显示「等待同步」，限额恢复后自动补上。取消收藏和删除收藏夹会删除对应书签。
+- 与上面的 Linux.do 双栏阅读预览共用收藏夹，在双栏里收藏时可以直接选择收藏夹。
+
 在 Tampermonkey 中打开安装地址即可安装；脚本元数据已配置 `@updateURL` 和 `@downloadURL`，后续推送新版本后可以自动更新。
