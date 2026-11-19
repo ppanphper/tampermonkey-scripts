@@ -1,7 +1,7 @@
 /* 仅用于本地浏览器回归：载入真实脚本，在内存中导出函数，不修改发布代码。 */
 (async () => {
   'use strict';
-  const source = await (await fetch('../../linuxdo-double-column.user.js')).text();
+  const source = await (await fetch('../linuxdo-double-column.user.js')).text();
   const startup = source.lastIndexOf("\n  if (document.readyState === 'loading')");
   if (startup < 0) throw new Error('未找到 userscript 启动入口');
   const script = document.createElement('script');

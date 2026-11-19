@@ -1,5 +1,5 @@
 /* 本地集成回归：用正式脚本和模拟的 Discourse 书签接口验证收藏与账号书签的双向同步。
- * 用法：在项目根目录启动静态服务器，打开 tests/linuxdo-favorites-sync/index.html?case=main|legacy|switch|original */
+ * 用法：在项目根目录启动静态服务器，打开 linuxdo-favorites-sync/tests/index.html?case=main|legacy|switch|original */
 (async () => {
   'use strict';
   const testCase = new URLSearchParams(location.search).get('case') || 'main';
@@ -166,7 +166,7 @@
   }).observe(document.body, { subtree: true, childList: true, characterData: true });
 
   async function startScript() {
-    const source = await (await realFetch('../../linuxdo-favorites-sync.user.js')).text();
+    const source = await (await realFetch('../linuxdo-favorites-sync.user.js')).text();
     new Function(source)();
   }
   const pendingCount = () => Object.keys(readPending()).length;
@@ -332,7 +332,7 @@
     await until(() => settled() && serverNames()['Topic:108'] === '[稍后读]', '批量归类');
     assert(serverNames()['Topic:101'] === '[福利羊毛]' && serverNames()['Topic:104'] === '[资源荟萃]', '已归类的书签保持不变');
     assert($('tr.bookmark-list-item .ld-fav-bookmark-btn').title.includes('删除书签'), '书签页取消按钮说明会删除书签');
-    history.pushState({}, '', '/tests/linuxdo-favorites-sync/index.html?case=main');
+    history.pushState({}, '', '/linuxdo-favorites-sync/tests/index.html?case=main');
 
     // 与双栏脚本的约定：收藏夹列表写入页面 localStorage，收到书签变动事件后立即拉取
     const sharedFolders = () => JSON.parse(localStorage.getItem('linuxdo-bookmark-folders') || '[]');

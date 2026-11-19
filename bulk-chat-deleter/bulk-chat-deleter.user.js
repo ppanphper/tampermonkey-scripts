@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT/Claude/Gemini Bulk Chat Deleter
 // @namespace    https://github.com/BulkChatDeleter
-// @version      1.4.4
+// @version      1.4.5
 // @description  Batch delete ChatGPT, Claude, DeepSeek and Grok conversations, plus Gemini chats and Notebooks from the Gemini page.
 // @author       KiraKiraAyu（原作者）/ ppanphper 修改
 // @match        https://chatgpt.com/*
@@ -13,8 +13,8 @@
 // @run-at       document-idle
 // @license      MIT
 // @homepage     https://github.com/ppanphper/tampermonkey-scripts
-// @updateURL    https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/bulk-chat-deleter.user.js
-// @downloadURL  https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/bulk-chat-deleter.user.js
+// @updateURL    https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/bulk-chat-deleter/bulk-chat-deleter.user.js
+// @downloadURL  https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/bulk-chat-deleter/bulk-chat-deleter.user.js
 // ==/UserScript==
 
 (async function BulkChatDeleter() {

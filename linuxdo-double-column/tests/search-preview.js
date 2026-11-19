@@ -1,7 +1,7 @@
 /* 本地集成回归：使用正式启动入口、事件代理、样式、历史及渲染流程。 */
 (async () => {
   'use strict';
-  const source = await (await fetch('../../linuxdo-double-column.user.js')).text();
+  const source = await (await fetch('../linuxdo-double-column.user.js')).text();
   const startup = source.lastIndexOf("\n  if (document.readyState === 'loading')");
   if (startup < 0) throw new Error('未找到 userscript 启动入口');
   const $ = selector => document.querySelector(selector);

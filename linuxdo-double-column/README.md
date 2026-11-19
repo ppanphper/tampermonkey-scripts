@@ -5,10 +5,10 @@ Tampermonkey 用户脚本：在 [linux.do](https://linux.do) 话题列表页或[
 ## 安装
 
 1. 安装 [Tampermonkey](https://www.tampermonkey.net/) 浏览器扩展
-2. 点击安装脚本：[linuxdo-double-column.user.js](https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/linuxdo-double-column.user.js)
+2. 点击安装脚本：[linuxdo-double-column.user.js](https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/linuxdo-double-column/linuxdo-double-column.user.js)
 3. 打开或刷新 linux.do，点击任意话题即可在右侧预览
 
-脚本内置 `@updateURL`，Tampermonkey 会自动检查本仓库的新版本。0.19.1 起脚本从 [linuxdo-double-column](https://github.com/ppanphper/linuxdo-double-column) 仓库迁到这里，已安装的电脑会自动切换更新地址，设计说明见 [linuxdo-double-column-design.md](linuxdo-double-column-design.md)。
+脚本内置 `@updateURL`，Tampermonkey 会自动检查本仓库的新版本。0.19.1 起脚本从 [linuxdo-double-column](https://github.com/ppanphper/linuxdo-double-column) 仓库迁到这里，已安装的电脑会自动切换更新地址，设计说明见 [design.md](design.md)。
 
 ## 功能
 
@@ -57,14 +57,14 @@ Tampermonkey 用户脚本：在 [linux.do](https://linux.do) 话题列表页或[
 在仓库根目录运行：
 
 ```sh
-node --check linuxdo-double-column.user.js
+node --check linuxdo-double-column/linuxdo-double-column.user.js
 python3 -m http.server 8765 --bind 127.0.0.1
 ```
 
-打开 [深层回复回归页面](http://127.0.0.1:8765/tests/linuxdo-double-column/tree-preview.html)。页面载入正式脚本的样式和渲染函数，用本地模拟 API 验证 100 层单链、嵌套分叉、缩进上限、父帖预览、分支导航、空索引回退、多重引用、回复分页、加载重试和状态恢复，不向 Linux.do 发送请求。
+打开 [深层回复回归页面](http://127.0.0.1:8765/linuxdo-double-column/tests/tree-preview.html)。页面载入正式脚本的样式和渲染函数，用本地模拟 API 验证 100 层单链、嵌套分叉、缩进上限、父帖预览、分支导航、空索引回退、多重引用、回复分页、加载重试和状态恢复，不向 Linux.do 发送请求。
 
-打开 [搜索页回归页面](http://127.0.0.1:8765/tests/linuxdo-double-column/search-preview.html)。页面复用 Discourse 搜索结果 DOM 结构及正式脚本启动入口，以本地模拟 API 验证搜索标题预取、点击命中楼层、前进后退、关闭恢复、动态结果、加载中切换结果、失败重试、原列表兼容、复制话题与楼层链接（含分享参数）和窄栏布局。
+打开 [搜索页回归页面](http://127.0.0.1:8765/linuxdo-double-column/tests/search-preview.html)。页面复用 Discourse 搜索结果 DOM 结构及正式脚本启动入口，以本地模拟 API 验证搜索标题预取、点击命中楼层、前进后退、关闭恢复、动态结果、加载中切换结果、失败重试、原列表兼容、复制话题与楼层链接（含分享参数）和窄栏布局。
 
-打开 [书签收藏夹回归页面](http://127.0.0.1:8765/tests/linuxdo-double-column/bookmark-folders.html)。页面以本地模拟的书签接口验证收藏后弹出菜单、选择与新建收藏夹、保留备注与提醒、非法名称与输入法回车、帖子字段补全、Esc 关闭、菜单内取消收藏，以及创建期间切换话题不误弹菜单，不向 Linux.do 发送请求。
+打开 [书签收藏夹回归页面](http://127.0.0.1:8765/linuxdo-double-column/tests/bookmark-folders.html)。页面以本地模拟的书签接口验证收藏后弹出菜单、选择与新建收藏夹、保留备注与提醒、非法名称与输入法回车、帖子字段补全、Esc 关闭、菜单内取消收藏，以及创建期间切换话题不误弹菜单，不向 Linux.do 发送请求。
 
-打开 [通知回归页面](http://127.0.0.1:8765/tests/linuxdo-double-column/notification-preview.html)。页面模拟 Discourse 头像菜单、通知页及通知项的原生点击处理，验证悬停预取、按楼层预览、标记已读、关闭菜单、切换标签页、书签预览、非话题与编辑通知的原生跳转、修饰键、后退关闭和窄栏布局，不向 Linux.do 发送请求。
+打开 [通知回归页面](http://127.0.0.1:8765/linuxdo-double-column/tests/notification-preview.html)。页面模拟 Discourse 头像菜单、通知页及通知项的原生点击处理，验证悬停预取、按楼层预览、标记已读、关闭菜单、切换标签页、书签预览、非话题与编辑通知的原生跳转、修饰键、后退关闭和窄栏布局，不向 Linux.do 发送请求。

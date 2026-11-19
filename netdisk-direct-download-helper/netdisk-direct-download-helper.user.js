@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name              网盘直链下载助手（免微信验证/支持 NDM）
 // @namespace         https://greasyfork.org/zh-CN/users/76501-eroslp
-// @version           6.13.1
+// @version           6.13.2
 // @author            eroslp（原作者）/ 本地静态化修改
 // @description       支持批量获取百度、阿里、天翼、迅雷、夸克、移动云盘直链；支持一键批量发送到 NDM；配置完全内置，不访问作者服务器，无需任何第三方口令验证。
 // @license           AGPL-3.0-or-later
 // @homepage          https://greasyfork.org/zh-CN/users/76501-eroslp
 // @supportURL        https://greasyfork.org/zh-CN/users/76501-eroslp
-// @updateURL         https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/netdisk-direct-download-helper.user.js
-// @downloadURL       https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/netdisk-direct-download-helper.user.js
+// @updateURL         https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/netdisk-direct-download-helper/netdisk-direct-download-helper.user.js
+// @downloadURL       https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/netdisk-direct-download-helper/netdisk-direct-download-helper.user.js
 // @match             *://pan.baidu.com/disk/home*
 // @match             *://yun.baidu.com/disk/home*
 // @match             *://pan.baidu.com/disk/main*

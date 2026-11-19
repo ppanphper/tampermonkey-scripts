@@ -1,0 +1,7 @@
+# linuxdo-double-column.user.js
+
+Original script (not a third-party copy). Opens linux.do topics from topic lists, search results and the notification menu/page in a right-hand preview panel rendered from Discourse JSON APIs, with original and tree views, replies, likes, bookmarks with folders, polls, timeline and read-time reporting. Moved from `ppanphper/linuxdo-double-column` at 0.19.1; the old repo is archived and its history stays there. User-facing features: `linuxdo-double-column/README.md`; design notes (Chinese): `linuxdo-double-column/design.md`.
+
+- `@grant none`, `@run-at document-start`; it runs in the page and reuses Discourse's own `MessageBus` and renderer when available. All requests go through same-origin `fetch` with the page cookies; never override `User-Agent` (Cloudflare).
+- Bookmark folders follow the same `[folder] note` contract as `linuxdo-favorites-sync` (defined in `linuxdo-favorites-sync/CLAUDE.md`, section Shared with linuxdo-double-column; read it before changing bookmark code): folder list from `localStorage['linuxdo-bookmark-folders']`, and `linuxdo-bookmarks-changed` is dispatched after every bookmark write.
+- Verification: `node --check linuxdo-double-column/linuxdo-double-column.user.js`, then serve the repo root on 8765 and open each page in `linuxdo-double-column/tests/` (tree, search, notification, bookmark folders). Each injects a test API before the startup block and mocks every API locally; run them as fresh top-level pages, since re-running in place or inside an iframe can time out.
