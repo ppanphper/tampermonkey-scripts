@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository
 
-A collection of Tampermonkey userscripts, most of them modified copies of third-party scripts. Users install each script from its raw GitHub URL, and every computer auto-updates from `main`. There is no build step, package manager or dependency. The only automated test is the local mock page for `linuxdo-favorites-sync.user.js`.
+A collection of Tampermonkey userscripts, most of them modified copies of third-party scripts. Users install each script from its raw GitHub URL, and every computer auto-updates from `main`. There is no build step, package manager or dependency. Only the two linux.do scripts have automated tests: local mock pages under `tests/<script-name>/`.
 
 Conventions every script follows:
 
@@ -78,6 +78,14 @@ On failure, an `Escape` keydown is dispatched to close menus and the loop contin
 - All injected IDs and classes use the `bcd-` prefix. `body.bcd-active` toggles batch-mode visibility through CSS in `injectStyles`.
 - Checkboxes are prepended to each item and stop propagation of pointer, mouse, touch, click and key events so selecting a row does not navigate.
 - The body-wide observer is debounced by 100 ms. `injectingToolbar` prevents concurrent injections while `injectToolbar` awaits anchors.
+
+## linuxdo-double-column.user.js
+
+Original script (not a third-party copy). Opens linux.do topics from topic lists, search results and the notification menu/page in a right-hand preview panel rendered from Discourse JSON APIs, with original and tree views, replies, likes, bookmarks with folders, polls, timeline and read-time reporting. Moved from `ppanphper/linuxdo-double-column` at 0.19.1; the old repo is archived and its history stays there. User-facing features: `docs/linuxdo-double-column.md`; design notes (Chinese): `docs/linuxdo-double-column-design.md`.
+
+- `@grant none`, `@run-at document-start`; it runs in the page and reuses Discourse's own `MessageBus` and renderer when available. All requests go through same-origin `fetch` with the page cookies; never override `User-Agent` (Cloudflare).
+- Bookmark folders follow the same `[folder] note` contract as `linuxdo-favorites-sync.user.js` (see below): folder list from `localStorage['linuxdo-bookmark-folders']`, and `linuxdo-bookmarks-changed` is dispatched after every bookmark write.
+- Verification: `node --check linuxdo-double-column.user.js`, then serve the repo root on 8765 and open each page in `tests/linuxdo-double-column/` (tree, search, notification, bookmark folders). Each injects a test API before the startup block and mocks every API locally; run them as fresh top-level pages, since re-running in place or inside an iframe can time out.
 
 ## linuxdo-favorites-sync.user.js
 
