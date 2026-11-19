@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT/Claude/Gemini Bulk Chat Deleter
 // @namespace    https://github.com/BulkChatDeleter
-// @version      1.4.3
+// @version      1.4.4
 // @description  Batch delete ChatGPT, Claude, DeepSeek and Grok conversations, plus Gemini chats and Notebooks from the Gemini page.
 // @author       KiraKiraAyu（原作者）/ ppanphper 修改
 // @match        https://chatgpt.com/*
@@ -1297,7 +1297,7 @@
       failed.length > 0
         ? `Done. Deleted ${succeeded}, failed ${failed.length}.`
         : `Successfully deleted ${succeeded} ${label.toLowerCase()}.`;
-    alert(`[Bulk Chat Deleter] ${msg}`);
+    console.log(`[BCD] ${msg}`);
 
     if (batchModeActive) {
       removeAllCheckboxes();
