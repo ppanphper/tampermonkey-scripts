@@ -77,6 +77,7 @@ On failure, an `Escape` keydown is dispatched to close menus and the loop contin
 - Build DOM with `createEl`; never use `innerHTML`. Gemini enforces a Trusted Types CSP.
 - All injected IDs and classes use the `bcd-` prefix. `body.bcd-active` toggles batch-mode visibility through CSS in `injectStyles`.
 - Checkboxes are prepended to each item and stop propagation of pointer, mouse, touch, click and key events so selecting a row does not navigate.
+- The batch result is only logged to the console; upstream's final `alert()` was removed, so drop it again when merging upstream changes. The `confirm()` before deleting stays.
 - The body-wide observer is debounced by 100 ms. `injectingToolbar` prevents concurrent injections while `injectToolbar` awaits anchors.
 
 ## linuxdo-double-column.user.js
