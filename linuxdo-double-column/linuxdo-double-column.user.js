@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Linux.do 双栏阅读预览
 // @namespace    https://linux.do/
-// @version      0.19.3
+// @version      0.20.0
 // @description  在 Linux.do 话题列表、搜索结果和通知中用右侧面板预览帖子（支持原始楼层与树状评论双视图、热门排序、回复/点赞/话题与楼层收藏/投票/时间线及阅读时长上报）
 // @match        https://linux.do/*
 // @homepageURL  https://github.com/ppanphper/tampermonkey-scripts
@@ -1501,6 +1501,59 @@
         gap: 4px;
         justify-content: flex-end;
         padding: 4px 0 6px;
+      }
+
+      #${PANEL_ID} .ld-preview-boosts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-inline-start: calc(var(--ld-post-avatar-size) + var(--ld-post-header-gap));
+        padding-bottom: 8px;
+      }
+
+      #${PANEL_ID} .ld-preview-boost {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+        max-width: 100%;
+        padding: 2px 8px 2px 2px;
+        color: var(--primary, #202124);
+        background: var(--primary-100, #f0f0f0);
+        border-radius: 999px;
+        font-size: 12px;
+        line-height: 1.3;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-avatar {
+        flex: 0 0 20px;
+        width: 20px;
+        height: 20px;
+        overflow: hidden;
+        background: var(--primary-low, #e9e9e9);
+        border-radius: 50%;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-avatar img {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-text {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-text p {
+        display: inline;
+        margin: 0;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-text img.emoji {
+        width: 16px;
+        height: 16px;
+        vertical-align: text-bottom;
       }
 
       #${PANEL_ID} .ld-preview-post-action {
@@ -3622,8 +3675,43 @@
     footer.append(createBookmarkButton(post), createLikeButton(post), copyButton, moreWrap, replyButton);
 
     article.append(body, footer);
+    const boosts = renderBoosts(post);
+    if (boosts) article.appendChild(boosts);
     enhancePolls(article, post);
     return article;
+  }
+
+  // Boost 是附在楼层下的短评（discourse-boosts 插件），原生显示为头像加文字的气泡。
+  function renderBoosts(post) {
+    const boosts = Array.isArray(post.boosts) ? post.boosts.filter((boost) => boost?.cooked) : [];
+    if (!boosts.length) return null;
+    const list = document.createElement('div');
+    list.className = 'ld-preview-boosts';
+    for (const boost of boosts) {
+      const bubble = document.createElement('span');
+      bubble.className = 'ld-preview-boost';
+      const user = boost.user;
+      const avatar = document.createElement(user?.username ? 'a' : 'span');
+      avatar.className = 'ld-preview-boost-avatar';
+      if (user?.username) {
+        avatar.href = `/u/${user.username}`;
+        avatar.title = user.name || user.username;
+        const src = avatarUrl(user.avatar_template);
+        if (src) {
+          const image = document.createElement('img');
+          image.src = src;
+          image.alt = '';
+          image.loading = 'lazy';
+          avatar.appendChild(image);
+        }
+      }
+      const text = document.createElement('span');
+      text.className = 'ld-preview-boost-text';
+      text.innerHTML = boost.cooked;
+      bubble.append(avatar, text);
+      list.appendChild(bubble);
+    }
+    return list;
   }
 
   function postLikeCount(post) {

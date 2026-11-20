@@ -76,3 +76,10 @@
 - 改收藏夹用 `PUT /bookmarks/{id}.json`，带回 `reminder_at` 和 `auto_delete_preference`，否则提醒会被清掉。话题 JSON 不提供 `pinned`，改名后置顶状态会被 Discourse 清除（2026-11-18 在 linux.do 实测）。
 - 楼层书签优先取话题 JSON 的 `bookmarks`；缺少时用帖子的 `bookmark_id`、`bookmark_name`、`bookmark_reminder_at` 补进列表。
 - `tests/bookmark-folders.html` 用本地模拟接口验证上述流程。
+
+# Boost 短评
+
+- linux.do 启用了 discourse-boosts 插件：楼层可附带短评，帖子 JSON 的 `boosts` 数组每项含已渲染的 `cooked` 和 `user`（已注销用户为 `null`）。原生在操作栏下方渲染为头像加文字的圆角气泡，一个楼层可有几十条。
+- 预览面板在操作栏下方按原顺序渲染全部气泡，与正文左侧对齐；头像链接到用户页，`user` 为空时只显示占位圆点。气泡底色取 `--primary-100`，与原生一致。
+- 只显示，不提供发送、删除和举报。`/posts/by_number` 不返回 `boosts`，树状视图按楼层单独补取的帖子不显示气泡；新 Boost 不实时推送，重新打开话题后显示。2026-11-19 只读核对 `/t/{id}.json` 与 `/t/{id}/posts.json` 均返回该字段。
+- `tests/search-preview.html` 验证气泡内容、头像链接、无用户和无 Boost 楼层。

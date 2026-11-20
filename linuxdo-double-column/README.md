@@ -33,6 +33,7 @@ Tampermonkey 用户脚本：在 [linux.do](https://linux.do) 话题列表页或[
 - 用户头衔、群组徽章、管理身份、楼主标签展示
 - 楼层「⋯」菜单支持只看楼主、只看指定用户及恢复全部评论
 - 楼层回复关系：头部显示被回复人头像/昵称（点击跳转），底部「N 个回复」展开官方样式的回复列表
+- 楼层下方显示 🚀 Boost 短评气泡（头像 + 内容），与原帖一致
 - 面板宽度拖动调节、放大模式、浏览器前进后退联动
 
 ### 交互
@@ -50,7 +51,7 @@ Tampermonkey 用户脚本：在 [linux.do](https://linux.do) 话题列表页或[
 
 - 仅在 `https://linux.do/*` 生效；理论上兼容其他 Discourse 站点（需自行修改 `@match`）
 - 所有 API 请求都通过浏览器原生 `fetch` 发出，浏览器会自动携带当前浏览器的标准 `User-Agent`；脚本不会手工覆盖该受保护请求头，并保留 same-origin 登录态 Cookie，以避免破坏 Cloudflare 检测所需的浏览器上下文
-- 未实现：🚀 Boost（消耗型资源，语义不明）、热门回复过滤、Reader Mode
+- 未实现：发送 🚀 Boost（消耗型资源，预览面板只显示）、热门回复过滤、Reader Mode
 
 ## 本地验证
 
@@ -63,7 +64,7 @@ python3 -m http.server 8765 --bind 127.0.0.1
 
 打开 [深层回复回归页面](http://127.0.0.1:8765/linuxdo-double-column/tests/tree-preview.html)。页面载入正式脚本的样式和渲染函数，用本地模拟 API 验证 100 层单链、嵌套分叉、缩进上限、父帖预览、分支导航、空索引回退、多重引用、回复分页、加载重试和状态恢复，不向 Linux.do 发送请求。
 
-打开 [搜索页回归页面](http://127.0.0.1:8765/linuxdo-double-column/tests/search-preview.html)。页面复用 Discourse 搜索结果 DOM 结构及正式脚本启动入口，以本地模拟 API 验证搜索标题预取、点击命中楼层、前进后退、关闭恢复、动态结果、加载中切换结果、失败重试、原列表兼容、复制话题与楼层链接（含分享参数）和窄栏布局。
+打开 [搜索页回归页面](http://127.0.0.1:8765/linuxdo-double-column/tests/search-preview.html)。页面复用 Discourse 搜索结果 DOM 结构及正式脚本启动入口，以本地模拟 API 验证搜索标题预取、点击命中楼层、前进后退、关闭恢复、动态结果、加载中切换结果、失败重试、原列表兼容、复制话题与楼层链接（含分享参数）、Boost 气泡和窄栏布局。
 
 打开 [书签收藏夹回归页面](http://127.0.0.1:8765/linuxdo-double-column/tests/bookmark-folders.html)。页面以本地模拟的书签接口验证收藏后弹出菜单、选择与新建收藏夹、保留备注与提醒、非法名称与输入法回车、帖子字段补全、Esc 关闭、菜单内取消收藏，以及创建期间切换话题不误弹菜单，不向 Linux.do 发送请求。
 
