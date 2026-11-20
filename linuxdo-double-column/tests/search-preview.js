@@ -21,6 +21,10 @@
       topic_id:Number(id), username:'local_test', name:'本地测试用户',
       avatar_template:'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="48" height="48"%3E%3Crect width="48" height="48" rx="24" fill="%23dce8e1"/%3E%3C/svg%3E', created_at:'2026-10-01T10:00:00Z', reply_count:0,
       reply_to_post_number:null, actions_summary:[],
+      boosts:i === 0 ? [
+        { id:1, cooked:'<p>前排支持</p>', user:{ username:'boost_user', name:'Boost 用户', avatar_template:'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="48" height="48"%3E%3Crect width="48" height="48" fill="%23f4c7a1"/%3E%3C/svg%3E' } },
+        { id:2, cooked:'<p>已注销用户的 Boost</p>', user:null },
+      ] : [],
       cooked:`<p>这是话题 ${id} 的第 ${i < 2 ? i + 1 : i + 2} 楼。</p><p>搜索结果点击后在右侧显示对应内容，左侧保留搜索条件和结果。</p>`,
     }));
   }
@@ -101,6 +105,13 @@
       assert(!nativeClicks.includes('first-result'), '点击继续传播到站点');
       assert(state.parentUrl === originalUrl && location.search === new URL(originalUrl).search, '搜索条件丢失');
       assert(history.state.fixture && history.state.ldDoubleColumn, '历史状态没有保留');
+    });
+    await test('楼层下方显示 Boost 气泡，已注销用户不显示头像链接', async () => {
+      const bubbles = [...article(1).querySelectorAll(':scope > .ld-preview-boosts > .ld-preview-boost')];
+      assert(bubbles.length === 2, `Boost 数量不正确：${bubbles.length}`);
+      assert(bubbles[0].textContent === '前排支持' && bubbles[0].querySelector('a[href="/u/boost_user"] img'), 'Boost 内容或头像缺失');
+      assert(!bubbles[1].querySelector('a, img') && bubbles[1].textContent === '已注销用户的 Boost', '无用户的 Boost 渲染错误');
+      assert(!article(2).querySelector('.ld-preview-boosts'), '没有 Boost 的楼层不应渲染容器');
     });
     await test('同一话题切换命中回复，跳过已删除楼层仍准确定位', async () => {
       const length = history.length; click('#reply-result'); await until(() => state.currentPostNumber === 4);
