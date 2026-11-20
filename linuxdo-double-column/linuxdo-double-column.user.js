@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Linux.do 双栏阅读预览
 // @namespace    https://linux.do/
-// @version      0.21.1
+// @version      0.21.2
 // @description  在 Linux.do 话题列表、搜索结果和通知中用右侧面板预览帖子（支持原始楼层与树状评论双视图、热门排序、回复/点赞/话题与楼层收藏/投票/时间线及阅读时长上报）
 // @match        https://linux.do/*
 // @homepageURL  https://github.com/ppanphper/tampermonkey-scripts
@@ -168,6 +168,8 @@
   };
 
   const topicCache = new Map();
+  // Badges shown by the site's Post Badges component, from `user_badges` in topic and posts JSON.
+  const posterBadges = new Map();
   const pendingFetches = new Map();
   const trackedTopicViews = new Set();
   const localLastRead = new Map();
@@ -278,6 +280,7 @@
         return response.json();
       })
       .then((data) => {
+        rememberPosterBadges(data);
         topicCache.set(topicId, { time: Date.now(), data });
         while (topicCache.size > CACHE_LIMIT) {
           topicCache.delete(topicCache.keys().next().value);
@@ -1113,7 +1116,37 @@
         width: var(--ld-post-avatar-size);
         height: var(--ld-post-avatar-size);
         flex: 0 0 var(--ld-post-avatar-size);
+      }
+
+      /* 不带 ID 优先级，站点为个别用户设置的头像圆角才能生效 */
+      :where(#${PANEL_ID}) .ld-preview-avatar {
         border-radius: 50%;
+      }
+
+      #${PANEL_ID} .ld-preview-avatar-frame,
+      #${PANEL_ID} .ld-preview-avatar-frame > a {
+        display: flex;
+        flex: none;
+      }
+
+      #${PANEL_ID} .ld-preview-avatar-frame {
+        position: relative;
+      }
+
+      /* 站点主题的商家头像光晕依赖原生楼层结构，面板无法匹配，照抄该规则 */
+      #${PANEL_ID} .ld-preview-avatar-frame:is([data-primary-group="g-merchant"], [data-primary-group="g-merchant2"])::after {
+        content: "";
+        position: absolute;
+        inset: 1px 0 0 1px;
+        border-radius: 50%;
+        box-shadow: 0 0 20px rgb(245, 191, 3);
+        animation: ld-preview-avatar-pulse 5s ease-in-out infinite;
+        pointer-events: none;
+      }
+
+      @keyframes ld-preview-avatar-pulse {
+        0%, 100% { opacity: 0.5; transform: scale(0.95); }
+        50% { opacity: 1; transform: scale(1); }
       }
 
       #${PANEL_ID} .ld-preview-author {
@@ -1438,6 +1471,44 @@
       #${PANEL_ID} .ld-preview-user-title .user-group {
         color: inherit;
         text-decoration: none;
+      }
+
+      #${PANEL_ID} .ld-preview-poster-icons {
+        display: flex;
+        flex-shrink: 0;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+      }
+
+      #${PANEL_ID} .ld-preview-poster-icon {
+        display: flex;
+        color: var(--primary-medium, #757575);
+        text-decoration: none;
+      }
+
+      #${PANEL_ID} .ld-preview-poster-icon.badge-type-gold {
+        color: rgb(231, 195, 0);
+      }
+
+      #${PANEL_ID} .ld-preview-poster-icon.badge-type-silver {
+        color: silver;
+      }
+
+      #${PANEL_ID} .ld-preview-poster-icon.badge-type-bronze {
+        color: rgb(205, 127, 50);
+      }
+
+      #${PANEL_ID} .ld-preview-poster-icon svg {
+        width: 1em;
+        height: 1em;
+        color: inherit;
+        fill: currentColor;
+      }
+
+      #${PANEL_ID} .ld-preview-poster-icon img {
+        width: 0.87em;
+        height: 0.87em;
       }
 
       #${PANEL_ID} .ld-preview-flair {
@@ -3510,6 +3581,77 @@
     });
   }
 
+  function rememberPosterBadges(data) {
+    const users = data?.user_badges?.users;
+    const badges = new Map(Object.values(data?.user_badges?.badges || {}).map((badge) => [badge.id, badge]));
+    for (const user of Object.values(users || {})) {
+      if (user?.id) posterBadges.set(user.id, (user.badge_ids || []).map((id) => badges.get(id)).filter(Boolean));
+    }
+  }
+
+  function buildIcon(name) {
+    try {
+      const html = window.require?.('discourse/lib/icon-library')?.iconHTML?.(name);
+      const template = document.createElement('template');
+      template.innerHTML = html || '';
+      if (template.content.firstElementChild) return template.content.firstElementChild;
+    } catch {
+      // The page bundle may not expose the icon library; use the sprite directly.
+    }
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', `fa d-icon d-icon-${name} svg-icon`);
+    svg.setAttribute('aria-hidden', 'true');
+    const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+    use.setAttribute('href', `#${name}`);
+    svg.appendChild(use);
+    return svg;
+  }
+
+  // Same markup as the Post Badges theme component; its own CSS only targets the native post header.
+  function appendPosterIcons(container, post) {
+    const badges = posterBadges.get(post.user_id);
+    if (!badges?.length) return;
+    const icons = document.createElement('span');
+    icons.className = 'ld-preview-poster-icons';
+    for (const badge of badges) {
+      const link = document.createElement('a');
+      const type = ['gold', 'silver', 'bronze'][badge.badge_type_id - 1];
+      link.className = type ? `ld-preview-poster-icon badge-type-${type}` : 'ld-preview-poster-icon';
+      link.href = `/badges/${badge.id}/${badge.slug}`
+        + (post.username ? `?username=${encodeURIComponent(post.username)}` : '');
+      link.title = badge.description || badge.name || '';
+      const image = badge.image_url || badge.image;
+      if (image && /^(https?:)?\//.test(image)) {
+        const img = document.createElement('img');
+        img.src = image;
+        img.alt = '';
+        link.appendChild(img);
+      } else if (badge.icon) {
+        link.appendChild(buildIcon(badge.icon.replace('fa-', '')));
+      }
+      icons.appendChild(link);
+    }
+    container.appendChild(icons);
+  }
+
+  // Native .post-avatar markup, so the site theme's per-user avatar styles apply.
+  function buildPosterAvatar(post, className) {
+    const frame = document.createElement('span');
+    frame.className = 'ld-preview-avatar-frame post-avatar';
+    if (post.primary_group_name) frame.dataset.primaryGroup = post.primary_group_name;
+    const link = document.createElement('a');
+    link.className = 'main-avatar';
+    if (post.username) link.dataset.userCard = post.username;
+    const avatar = document.createElement('img');
+    avatar.className = `${className} avatar`;
+    avatar.src = avatarUrl(post.avatar_template);
+    avatar.alt = '';
+    avatar.loading = 'lazy';
+    link.appendChild(avatar);
+    frame.appendChild(link);
+    return frame;
+  }
+
   // Discourse's poster-name classes, so the site theme styles the preview names too.
   function buildPosterName(post, className) {
     const wrapper = document.createElement('span');
@@ -3553,6 +3695,7 @@
       }
       container.appendChild(title);
     }
+    appendPosterIcons(container, post);
     if (post.flair_url && /^(https?:)?\//.test(post.flair_url)) {
       try {
         const flair = document.createElement('img');
@@ -3587,11 +3730,7 @@
     const item = document.createElement('div');
     item.className = 'ld-preview-embedded-reply';
 
-    const avatar = document.createElement('img');
-    avatar.className = 'ld-preview-avatar ld-preview-avatar-small';
-    avatar.src = avatarUrl(reply.avatar_template);
-    avatar.alt = '';
-    avatar.loading = 'lazy';
+    const avatar = buildPosterAvatar(reply, 'ld-preview-avatar ld-preview-avatar-small');
 
     const main = document.createElement('div');
     main.className = 'ld-preview-embedded-main';
@@ -3715,11 +3854,7 @@
     const header = document.createElement('header');
     header.className = 'ld-preview-post-header';
 
-    const avatar = document.createElement('img');
-    avatar.className = 'ld-preview-avatar';
-    avatar.src = avatarUrl(post.avatar_template);
-    avatar.alt = '';
-    avatar.loading = 'lazy';
+    const avatar = buildPosterAvatar(post, 'ld-preview-avatar');
 
     const meta = document.createElement('span');
     meta.className = 'ld-preview-post-meta';
@@ -5192,6 +5327,7 @@
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
+    rememberPosterBadges(data);
     return data.post_stream?.posts || [];
   }
 

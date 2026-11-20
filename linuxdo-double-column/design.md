@@ -62,8 +62,22 @@
 - 预览面板不复制这些规则，按 [poster-name](https://github.com/discourse/discourse/blob/main/frontend/discourse/app/components/post/meta-data/poster-name.gjs) 输出相同类名，由站点 CSS 生效，站点增改样式时自动同步：名字链接外包一层 `span`，按帖子字段加 `staff`、`admin`、`moderator`、`category-moderator`（`group_moderator`）和 `group--<主群组>`；头衔加 `user-title` 与 `user-title--<头衔>`，群组头衔另加 `user-title--<群组>` 并渲染为 `a.user-group` 群组链接。类名中的空白换成 `-` 并转小写，与原生一致。
 - 楼层标题和展开的被回复帖共用此结构，被回复帖的名字因此也改为用户页链接；没有用户名时不设 `href`，避免点击跳到 `#`。
 - 核心样式中裸 `.user-title` 只有 `float`、`clear`，在弹性布局中无效；其他通用类名的规则都限定在原生结构内，不影响面板。
-- 头像发光等装饰挂在原生头像结构（`.post-avatar`、`img.avatar`）上，面板头像未沿用，不在本次范围。
 - `tests/search-preview.html` 摘录上述站点规则，验证类名、群组链接，以及面板样式不会覆盖站点颜色和动画。
+
+## 头像光晕
+
+- 主题 138 的头像规则（2026-11-20 核对）：所有 `img.avatar` 带浅蓝细边框；neo 的头像圆角为 10%；`.post-avatar:has(a.main-avatar[data-user-card="…"])::after` 给 neo 和另外 8 位用户加蓝色脉冲光晕；`div.group-g-merchant > article > div.row > div.topic-avatar > .post-avatar::after` 给商家群组（`g-merchant`、`g-merchant2`）加金色光晕。
+- 楼层和被回复帖的头像按原生结构输出 `span.post-avatar > a.main-avatar[data-user-card] > img.avatar`，前三条规则直接生效。`a` 不带 `href`，头像仍不可点击；面板挂在 `body` 下，不在 Discourse 用户卡片的监听范围（`#main-outlet` 等）内，2026-11-20 实测点击不弹卡片。
+- 面板头像的圆形用 `:where(#面板)` 声明，优先级低于站点按用户设置的圆角。
+- 商家规则依赖原生楼层的五层结构，面板无法匹配，脚本照抄该规则：外框带 `data-primary-group`（避免 `group-*` 类名撞上核心样式），动画用自有的 `ld-preview-avatar-pulse`。站点修改商家光晕时需同步。
+
+## 徽章图标
+
+- 站点启用 [Post Badges](https://github.com/discourse/discourse-post-badges) 组件（主题 114），在名字后显示所选徽章。组件通过主题修饰符让服务端在 `/t/{id}.json` 和 `/t/{id}/posts.json` 返回 `user_badges`（`users[用户ID].badge_ids` 与 `badges[ID]`），只含设置中列出且已启用的徽章；`/posts/by_number` 等单帖接口不返回。
+- 脚本把两个接口返回的 `user_badges` 按用户 ID 缓存（徽章与话题无关，不随话题清空），渲染名字时按 `post.user_id` 查找。只由单帖接口载入、且未在其他响应中出现过的用户不显示徽章。
+- 标记与组件一致：头衔后一个 `a.badge-type-<金/银/铜>` 链接到 `/badges/{id}/{slug}?username=…`（组件当前设置为用户徽章页），悬停提示为徽章说明。有 `image_url` 用图片，否则用 Discourse `iconHTML` 生成 sprite 图标，页面不提供时直接引用 `#图标名`。组件样式限定在原生 `.topic-meta-data .names` 下，面板自带同样的金、银、铜配色。
+- 顺序沿用服务端（按徽章 ID），组件按设置顺序排序；linux.do 当前设置 `devotee|种子用户|元气满满|破界者` 与 ID 顺序一致。
+- 2026-11-20 在 linux.do 注入新函数和样式渲染预览面板：种子用户显示金色嫩芽图标，蓝色、金色光晕和头像细边框均由站点样式或照抄规则生效。`tests/search-preview.html` 模拟 `user_badges` 和站点规则，验证徽章顺序、链接、颜色、图片徽章、滚动加载的 `posts.json` 徽章，以及头像结构、光晕和圆角。
 
 # 书签收藏夹
 

@@ -30,11 +30,13 @@
     .blurb { color:var(--primary-medium); margin-top:8px; }
     .extra-links { display:flex; flex-wrap:wrap; gap:10px; margin:20px 0; }
     @media(max-width:780px) { .search-header,.search-results { padding:8px 0; } }
-    /* linux.do 主题 138 的用户名规则（2026-11-20 摘录），验证预览类名与面板样式不冲突 */
+    /* linux.do 主题 138 的用户名与头像规则（2026-11-20 摘录，用户名换成测试数据），验证预览类名与面板样式不冲突 */
     .staff > a { color:rgb(0,174,255) !important; }
     span.user-title--g-merchant a.user-group { color:rgb(245,191,3) !important; }
     span.user-title--种子用户 { background:linear-gradient(135deg,#f0f,#0ff 25%,#ff0 50%,#f0f 75%,#0ff) 0 0/400% 400% text; -webkit-text-fill-color:transparent; animation:holographic 15s ease-in-out infinite; }
     @keyframes holographic { 50% { background-position:100% 50%; } }
+    .post-avatar:has(a.main-avatar[data-user-card="local_test"])::after { content:""; position:absolute; inset:1px 0 0 1px; border-radius:50%; box-shadow:rgb(0,174,255) 0 0 20px; pointer-events:none; }
+    img.avatar[src*="square"] { border-radius:10%; }
   </style>
 </head>
 <body class="search-page">
