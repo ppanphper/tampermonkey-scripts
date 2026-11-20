@@ -56,6 +56,15 @@
 - 复制成功和失败沿用现有 toast；剪贴板 API 不可用时退回 `execCommand('copy')`。
 - `tests/search-preview.html` 验证话题与楼层链接的分享参数、设置关闭和未登录时不附加，以及加载中切换话题时复制新话题。
 
+# 用户名样式
+
+- linux.do 主题按 Discourse 原生类名给用户名加样式（2026-11-20 核对主题 138）：`.staff > a`、`.admin > a`、`.category-moderator > a` 名字为蓝色；`span.user-title--种子用户`、`破界者`、`premium` 头衔为流光渐变动画；`span.user-title--g-merchant a.user-group` 商家群组头衔为金色。
+- 预览面板不复制这些规则，按 [poster-name](https://github.com/discourse/discourse/blob/main/frontend/discourse/app/components/post/meta-data/poster-name.gjs) 输出相同类名，由站点 CSS 生效，站点增改样式时自动同步：名字链接外包一层 `span`，按帖子字段加 `staff`、`admin`、`moderator`、`category-moderator`（`group_moderator`）和 `group--<主群组>`；头衔加 `user-title` 与 `user-title--<头衔>`，群组头衔另加 `user-title--<群组>` 并渲染为 `a.user-group` 群组链接。类名中的空白换成 `-` 并转小写，与原生一致。
+- 楼层标题和展开的被回复帖共用此结构，被回复帖的名字因此也改为用户页链接；没有用户名时不设 `href`，避免点击跳到 `#`。
+- 核心样式中裸 `.user-title` 只有 `float`、`clear`，在弹性布局中无效；其他通用类名的规则都限定在原生结构内，不影响面板。
+- 头像发光等装饰挂在原生头像结构（`.post-avatar`、`img.avatar`）上，面板头像未沿用，不在本次范围。
+- `tests/search-preview.html` 摘录上述站点规则，验证类名、群组链接，以及面板样式不会覆盖站点颜色和动画。
+
 # 书签收藏夹
 
 ## 交互
