@@ -59,6 +59,8 @@
   const BOOKMARK_FOLDER_INVALID = /[[\]<>"&]/;
   const BOOST_MAX_LENGTH = 16;
   const BOOST_MAX_EMOJI = 5;
+  const BOOST_FLAG_TARGET = 'DiscourseBoosts::Boost';
+  const FLAG_MESSAGE_MAX_LENGTH = 500;
 
   const state = {
     panel: null,
@@ -1548,7 +1550,7 @@
       }
 
       #${PANEL_ID} button.ld-preview-boost-text,
-      #${PANEL_ID} .ld-preview-boost-delete {
+      #${PANEL_ID} .ld-preview-boost-action {
         padding: 0;
         color: inherit;
         background: transparent;
@@ -1559,12 +1561,25 @@
         text-align: left;
       }
 
-      #${PANEL_ID} .ld-preview-boost-delete {
+      #${PANEL_ID} .ld-preview-boost-actions {
+        display: inline-flex;
+        gap: 6px;
         margin-left: 2px;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-actions[hidden] {
+        display: none;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-action {
+        color: var(--primary-medium, #757575);
+      }
+
+      #${PANEL_ID} .ld-preview-boost-delete {
         color: var(--danger, #e45735);
       }
 
-      #${PANEL_ID} .ld-preview-boost-delete:disabled {
+      #${PANEL_ID} .ld-preview-boost-action:disabled {
         cursor: default;
         opacity: 0.6;
       }
@@ -1712,6 +1727,56 @@
 
       #${PANEL_ID} .ld-preview-boost-count.is-over {
         color: var(--danger, #e45735);
+      }
+
+      #${PANEL_ID} .ld-preview-boost-flag-menu {
+        right: auto;
+        left: 0;
+        width: 240px;
+        font-size: 13px;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-flag-menu.aligns-right {
+        right: 0;
+        left: auto;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-flag-message {
+        margin: 4px 2px 0;
+        padding: 5px 8px;
+        resize: vertical;
+        color: var(--primary, #202124);
+        background: var(--secondary, #ffffff);
+        border: 1px solid var(--primary-low-mid, #cccccc);
+        border-radius: 4px;
+        font: inherit;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-flag-hint {
+        padding: 2px 4px 0;
+        color: var(--primary-medium, #757575);
+        font-size: 12px;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-flag-confirm {
+        display: flex;
+        gap: 6px;
+        align-items: flex-start;
+        padding: 4px;
+        line-height: 1.4;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-flag-message[hidden],
+      #${PANEL_ID} .ld-preview-boost-flag-hint[hidden],
+      #${PANEL_ID} .ld-preview-boost-flag-confirm[hidden] {
+        display: none;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-flag-submit {
+        margin-top: 4px;
+        color: var(--danger, #e45735);
+        font-weight: 600;
+        text-align: center;
       }
 
       #${PANEL_ID} .ld-preview-post-menu-separator {
@@ -3107,22 +3172,20 @@
   }
 
   // #data-preloaded 在 Discourse 启动后仍保留；登录状态变化会整页刷新，因此每次现读即可。
-  function readPreloaded() {
+  // 各键的值是 JSON 字符串，只解析用到的键（site 较大）。
+  function readPreloaded(...keys) {
     try {
       const preloaded = JSON.parse(document.getElementById('data-preloaded')?.textContent || '{}');
-      return {
-        user: preloaded.currentUser ? JSON.parse(preloaded.currentUser) : null,
-        settings: preloaded.siteSettings ? JSON.parse(preloaded.siteSettings) : {},
-      };
+      return Object.fromEntries(keys.map((key) => [key, preloaded[key] ? JSON.parse(preloaded[key]) : null]));
     } catch {
-      return { user: null, settings: {} };
+      return {};
     }
   }
 
   // 与 Discourse resolveShareUrl 一致：登录且站点开启徽章和分享链接用户名时附加 ?u=，访问计入分享徽章。
   function shareUrlSuffix() {
-    const { user, settings } = readPreloaded();
-    if (!user?.username || !settings.enable_badges || !settings.allow_username_in_share_links) return '';
+    const { currentUser: user, siteSettings: settings } = readPreloaded('currentUser', 'siteSettings');
+    if (!user?.username || !settings?.enable_badges || !settings?.allow_username_in_share_links) return '';
     return `?u=${encodeURIComponent(user.username.toLowerCase())}`;
   }
 
@@ -3757,62 +3820,255 @@
     if (!boosts.length) return null;
     const list = document.createElement('div');
     list.className = 'ld-preview-boosts';
-    for (const boost of boosts) {
-      const bubble = document.createElement('span');
-      bubble.className = 'ld-preview-boost';
-      const user = boost.user;
-      const avatar = document.createElement(user?.username ? 'a' : 'span');
-      avatar.className = 'ld-preview-boost-avatar';
-      if (user?.username) {
-        avatar.href = `/u/${user.username}`;
-        avatar.title = user.name || user.username;
-        const src = avatarUrl(user.avatar_template);
-        if (src) {
-          const image = document.createElement('img');
-          image.src = src;
-          image.alt = '';
-          image.loading = 'lazy';
-          avatar.appendChild(image);
-        }
-      }
-      // 可删除的气泡与原生一致：点击内容才显示删除，避免误删。
-      const text = document.createElement(boost.can_delete ? 'button' : 'span');
-      text.className = 'ld-preview-boost-text';
-      text.innerHTML = boost.cooked;
-      bubble.append(avatar, text);
-      if (boost.can_delete) {
-        text.type = 'button';
-        text.title = '点击显示删除';
-        const remove = document.createElement('button');
-        remove.type = 'button';
-        remove.className = 'ld-preview-boost-delete';
-        remove.textContent = '删除';
-        remove.hidden = true;
-        text.addEventListener('click', () => {
-          remove.hidden = !remove.hidden;
-          remove.classList.remove('is-confirming');
-          remove.textContent = '删除';
-        });
-        remove.addEventListener('click', () => deleteBoost(post, boost, remove));
-        bubble.appendChild(remove);
-      }
-      list.appendChild(bubble);
-    }
+    for (const boost of boosts) list.appendChild(renderBoostBubble(post, boost));
     return list;
   }
 
-  function isCurrentUser(user) {
+  function renderBoostBubble(post, boost) {
+    const bubble = document.createElement('span');
+    bubble.className = 'ld-preview-boost';
+    const user = boost.user;
+    const avatar = document.createElement(user?.username ? 'a' : 'span');
+    avatar.className = 'ld-preview-boost-avatar';
+    if (user?.username) {
+      avatar.href = `/u/${user.username}`;
+      avatar.title = user.name || user.username;
+      const src = avatarUrl(user.avatar_template);
+      if (src) {
+        const image = document.createElement('img');
+        image.src = src;
+        image.alt = '';
+        image.loading = 'lazy';
+        avatar.appendChild(image);
+      }
+    }
+    // 与原生一致：点击内容才显示举报、删除，避免误操作。权限未知（实时推送的他人 Boost）时点击后再查询。
+    const actionable = boost.can_delete || boost.can_flag || boost.can_delete === undefined;
+    const text = document.createElement(actionable ? 'button' : 'span');
+    text.className = 'ld-preview-boost-text';
+    text.innerHTML = boost.cooked;
+    bubble.append(avatar, text);
+    if (actionable) {
+      text.type = 'button';
+      text.title = '点击显示操作';
+      const actions = document.createElement('span');
+      actions.className = 'ld-preview-boost-actions';
+      actions.hidden = true;
+      text.addEventListener('click', () => toggleBoostActions(post, boost, text, actions));
+      bubble.appendChild(actions);
+    }
+    return bubble;
+  }
+
+  async function toggleBoostActions(post, boost, text, actions) {
+    if (!actions.hidden) {
+      if (state.postMenu && actions.contains(state.postMenu)) hidePostMenu();
+      actions.hidden = true;
+      return;
+    }
+    if (boost.can_delete === undefined) {
+      text.disabled = true;
+      try {
+        const response = await fetch(`/discourse-boosts/boosts/${boost.id}`, {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        Object.assign(boost, {
+          can_delete: Boolean(data.can_delete),
+          can_flag: Boolean(data.can_flag),
+          available_flags: data.available_flags || [],
+          user_flag_status: data.user_flag_status ?? null,
+        });
+      } catch {
+        showToast('Boost 权限加载失败');
+        return;
+      } finally {
+        text.disabled = false;
+      }
+    }
+    actions.replaceChildren();
+    if (boost.can_flag) actions.appendChild(createBoostFlagControl(post, boost));
+    if (boost.can_delete) {
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'ld-preview-boost-action ld-preview-boost-delete';
+      remove.textContent = '删除';
+      remove.addEventListener('click', () => deleteBoost(post, boost, remove));
+      actions.appendChild(remove);
+    }
+    actions.hidden = !actions.childElementCount;
+  }
+
+  function boostFlagTypes(boost, site) {
+    const available = Array.isArray(boost.available_flags) ? boost.available_flags : [];
+    return (Array.isArray(site?.post_action_types) ? site.post_action_types : [])
+      .filter((type) => (
+        type.is_flag && type.enabled && type.applies_to?.includes(BOOST_FLAG_TARGET) && available.includes(type.name_key)
+      ))
+      .sort((left, right) => (left.position ?? 0) - (right.position ?? 0));
+  }
+
+  function plainText(html) {
+    const element = document.createElement('div');
+    element.innerHTML = html || '';
+    return element.textContent.trim();
+  }
+
+  function createBoostFlagControl(post, boost) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ld-preview-boost-action';
+    // 举报审核中不能重复举报；处理完成后可按站点冷却时间再次举报，由服务端判断。
+    if (boost.user_flag_status === 'pending') {
+      button.textContent = '已举报';
+      button.disabled = true;
+      return button;
+    }
+    button.textContent = '举报';
+    const menu = document.createElement('div');
+    menu.className = 'ld-preview-post-menu ld-preview-boost-flag-menu';
+    menu.setAttribute('role', 'dialog');
+    menu.setAttribute('aria-label', '举报 Boost');
+    menu.hidden = true;
+    const wrap = document.createElement('span');
+    wrap.className = 'ld-preview-post-more-wrap';
+    button.setAttribute('aria-haspopup', 'dialog');
+    button.setAttribute('aria-expanded', 'false');
+    wrap.append(button, menu);
+    button.addEventListener('click', () => {
+      if (state.postMenu === menu) {
+        hidePostMenu();
+        return;
+      }
+      openBoostFlagMenu(post, boost, menu, button);
+    });
+    return wrap;
+  }
+
+  // 对应原生举报窗口：选择类型；需要说明的类型（如「其他内容」「非法」）填写说明，非法内容另需确认。
+  function openBoostFlagMenu(post, boost, menu, button) {
+    const { site, siteSettings } = readPreloaded('site', 'siteSettings');
+    const types = boostFlagTypes(boost, site);
+    if (!types.length) {
+      showToast('没有可用的举报类型，请在原帖举报');
+      return;
+    }
+    const minLength = Number(siteSettings?.min_personal_message_post_length) || 0;
+    let selected = null;
+    let busy = false;
+    menu.textContent = '';
+
+    const options = types.map((type) => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'ld-preview-post-menu-option';
+      option.textContent = type.name || type.name_key;
+      option.title = plainText(type.description);
+      option.setAttribute('role', 'radio');
+      option.addEventListener('click', () => {
+        selected = type;
+        update();
+        if (type.require_message) message.focus({ preventScroll: true });
+      });
+      menu.appendChild(option);
+      return option;
+    });
+
+    const message = document.createElement('textarea');
+    message.className = 'ld-preview-boost-flag-message';
+    message.rows = 3;
+    message.maxLength = FLAG_MESSAGE_MAX_LENGTH;
+    message.setAttribute('aria-label', '举报说明');
+    const hint = document.createElement('span');
+    hint.className = 'ld-preview-boost-flag-hint';
+    const confirmLabel = document.createElement('label');
+    confirmLabel.className = 'ld-preview-boost-flag-confirm';
+    const confirm = document.createElement('input');
+    confirm.type = 'checkbox';
+    confirmLabel.append(confirm, '我上面所写的内容准确且完整。');
+    const submit = document.createElement('button');
+    submit.type = 'button';
+    submit.className = 'ld-preview-post-menu-option ld-preview-boost-flag-submit';
+    submit.textContent = '举报';
+    menu.append(message, hint, confirmLabel, submit);
+
+    const messageError = () => {
+      if (!selected?.require_message) return '';
+      const length = message.value.trim().length;
+      if (length < minLength) return `至少输入 ${minLength} 个字`;
+      if (length > FLAG_MESSAGE_MAX_LENGTH) return `最多 ${FLAG_MESSAGE_MAX_LENGTH} 个字`;
+      return '';
+    };
+
+    const update = () => {
+      options.forEach((option, index) => {
+        const active = types[index] === selected;
+        option.textContent = `${active ? '✓ ' : ''}${types[index].name || types[index].name_key}`;
+        option.setAttribute('aria-checked', String(active));
+      });
+      const needsMessage = Boolean(selected?.require_message);
+      const illegal = selected?.name_key === 'illegal';
+      message.hidden = !needsMessage;
+      message.placeholder = illegal
+        ? '请说明你认为此内容违法的具体原因，并尽量提供相关链接和示例。'
+        : '请具体说明你关心的问题，并尽量提供相关链接和示例。';
+      hint.hidden = !needsMessage;
+      hint.textContent = messageError() || `还可输入 ${FLAG_MESSAGE_MAX_LENGTH - message.value.trim().length} 个字`;
+      confirmLabel.hidden = !illegal;
+      submit.disabled = busy || !selected || Boolean(messageError()) || (illegal && !confirm.checked);
+    };
+
+    message.addEventListener('input', update);
+    confirm.addEventListener('change', update);
+    submit.addEventListener('click', async () => {
+      if (submit.disabled) return;
+      busy = true;
+      update();
+      try {
+        await apiRequest('POST', `/discourse-boosts/boosts/${boost.id}/flags`, {
+          flag_type_id: selected.id,
+          ...(selected.require_message ? { message: message.value.trim() } : {}),
+        });
+        boost.user_flag_status = 'pending';
+        if (state.postMenu === menu) hidePostMenu();
+        const article = button.closest('article');
+        if (article) syncPostBoosts(post, article);
+        showToast('已举报，管理人员会尽快处理');
+      } catch (error) {
+        showToast(error.message || '举报失败');
+      } finally {
+        busy = false;
+        update();
+      }
+    });
+
+    update();
+    menu.classList.remove('aligns-right');
+    togglePostMenu(menu, button);
+    // 气泡可能在面板任意位置：默认向右展开，右侧放不下时改为右对齐。
+    const bounds = state.scroll?.getBoundingClientRect();
+    if (bounds && menu.getBoundingClientRect().right > bounds.right - 6) menu.classList.add('aligns-right');
+  }
+
+  function isCurrentUser(user, currentUser = readPreloaded('currentUser').currentUser) {
     const id = user?.id;
-    return id != null && id === readPreloaded().user?.id;
+    return id != null && id === currentUser?.id;
   }
 
   // 同一用户在每楼只有一条 Boost；实时推送与发送结果可能先后到达，按 ID 或用户合并。
+  // 推送的 Boost 不带权限：本人的可删除不可举报，未登录时都不可用，其他情况点击时再查询。
   function upsertBoost(post, boost) {
     const boosts = Array.isArray(post.boosts) ? post.boosts : [];
     const userId = boost.user?.id;
     const index = boosts.findIndex((item) => item.id === boost.id || (userId != null && item.user?.id === userId));
-    const own = isCurrentUser(boost.user);
-    const merged = { ...(own ? { can_delete: true } : {}), ...(index >= 0 ? boosts[index] : {}), ...boost };
+    const { currentUser } = readPreloaded('currentUser');
+    const own = isCurrentUser(boost.user, currentUser);
+    let defaults = {};
+    if (own) defaults = { can_delete: true, can_flag: false };
+    else if (!currentUser) defaults = { can_delete: false, can_flag: false };
+    const merged = { ...defaults, ...(index >= 0 ? boosts[index] : {}), ...boost };
     post.boosts = index >= 0 ? boosts.map((item, i) => (i === index ? merged : item)) : [...boosts, merged];
     if (own) post.can_boost = false;
   }
@@ -3830,6 +4086,7 @@
   function syncPostBoosts(post, article) {
     const footer = article.querySelector(':scope > .ld-preview-post-footer');
     const current = article.querySelector(':scope > .ld-preview-boosts');
+    if (state.postMenu && current?.contains(state.postMenu)) hidePostMenu();
     const list = renderBoosts(post);
     if (current && list) current.replaceWith(list);
     else if (current) current.remove();

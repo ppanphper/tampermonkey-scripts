@@ -94,7 +94,7 @@
 
 ## 删除与实时更新
 
-- 带 `can_delete` 的气泡（本人的，或版主可删的）与原生一致：点击内容显示「删除」，再点击调用 `DELETE /discourse-boosts/boosts/{id}`（返回 204）。删除他人的 Boost 需再点一次「确认删除」，对应原生的确认框。删除本人的 Boost 后恢复 🚀。举报仍需在原帖操作。
+- 带 `can_delete` 或 `can_flag` 的气泡与原生一致：点击内容显示「举报」「删除」。「删除」调用 `DELETE /discourse-boosts/boosts/{id}`（返回 204）；删除他人的 Boost（版主）需再点一次「确认删除」，对应原生的确认框。删除本人的 Boost 后恢复 🚀。
 - 插件在 `/topic/{topic_id}` 频道推送 `boost_added`（`id` 为帖子 ID，`boost` 含 `id`、`cooked`、`user`）和 `boost_removed`（`boost_id`）。预览复用已订阅的话题频道，按原生回调的规则更新：同 ID 或同用户的 Boost 合并而不重复追加，本人新增时隐藏 🚀，本人删除时恢复。未加载的楼层忽略，之后加载时由接口返回最新数据。
 - 发送结果和本人的推送可能先后到达，两者都走同一合并逻辑，只显示一条。推送的 Boost 不带 `can_delete`，本人的默认可删除。
 - 判断本人用 `#data-preloaded` 中 `currentUser.id`，只在发送、删除和收到推送时读取。

@@ -1,4 +1,4 @@
-/* 本地集成回归：使用正式启动入口，验证楼层 Boost 的发送、删除、实时推送、长度校验与失败处理。 */
+/* 本地集成回归：使用正式启动入口，验证楼层 Boost 的发送、删除、举报、实时推送、长度校验与失败处理。 */
 (async () => {
   'use strict';
   const source = await (await fetch('../linuxdo-double-column.user.js')).text();
@@ -13,7 +13,7 @@
   }
   const settle = async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); };
 
-  let writes = [], failNext = null, failDelete = false, holdCreate = false, releaseCreate = null, nextBoostId = 900;
+  let writes = [], reads = [], failNext = null, failDelete = false, failFlag = false, holdCreate = false, releaseCreate = null, nextBoostId = 900;
   const avatar = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="48" height="48"%3E%3Crect width="48" height="48" rx="24" fill="%23dce8e1"/%3E%3C/svg%3E';
   const me = { id:1, username:'local_test', name:'本地测试用户', avatar_template:avatar };
   const fixtures = {};
@@ -31,6 +31,13 @@
     delete fixtures[300].posts[4].can_boost;
     // 他人的 Boost 带 can_delete，模拟版主可删除。
     fixtures[300].posts[2].boosts = [{ id:801, cooked:'<p>前排</p>', can_delete:true, user:{ id:2, username:'other', avatar_template:avatar } }];
+    // 第 5 楼用于举报：两条可举报，一条已在审核中。
+    const flaggable = { can_delete:false, can_flag:true, available_flags:['off_topic', 'inappropriate', 'spam', 'illegal', 'notify_moderators'], user_flag_status:null };
+    fixtures[300].posts[4].boosts = [
+      { id:802, cooked:'<p>路人</p>', ...flaggable, user:{ id:4, username:'passer', avatar_template:avatar } },
+      { id:803, cooked:'<p>已举报过</p>', ...flaggable, user_flag_status:'pending', user:{ id:5, username:'flagged', avatar_template:avatar } },
+      { id:804, cooked:'<p>再来</p>', ...flaggable, user:{ id:6, username:'again', avatar_template:avatar } },
+    ];
   }
   resetFixtures();
 
@@ -55,6 +62,14 @@
       if (failNext) { const failure = failNext; failNext = null; return json(failure.body, failure.status); }
       return json({ id:nextBoostId++, cooked:`<p>${body.raw}</p>`, can_delete:true, can_flag:false, user:me });
     }
+    if (/^\/discourse-boosts\/boosts\/\d+\/flags$/.test(url.pathname) && method === 'POST') {
+      if (failFlag) { failFlag = false; return json({ errors:['你已经举报过了'] }, 422); }
+      return json({ success:'OK' });
+    }
+    if (url.pathname === '/discourse-boosts/boosts/950' && method === 'GET') {
+      reads.push(url.pathname);
+      return json({ id:950, can_delete:false, can_flag:true, available_flags:['spam'], user_flag_status:null });
+    }
     if (/^\/discourse-boosts\/boosts\/\d+$/.test(url.pathname) && method === 'DELETE') {
       if (failDelete) { failDelete = false; return json({ errors:['删除太频繁'] }, 429); }
       return new Response(null, { status:204 });
@@ -62,6 +77,26 @@
     if (url.pathname === '/topics/timings') return json({});
     return json({ errors:[`未模拟的接口 ${method} ${url.pathname}`] }, 404);
   };
+
+  // 模拟 #data-preloaded：当前用户、站点设置和举报类型（含不适用于 Boost 的、已停用的类型，验证过滤）。
+  const preloaded = document.createElement('script');
+  preloaded.type = 'application/json';
+  preloaded.id = 'data-preloaded';
+  const boostTarget = ['Post', 'DiscourseBoosts::Boost'];
+  preloaded.textContent = JSON.stringify({
+    currentUser:JSON.stringify({ id:1, username:'local_test' }),
+    siteSettings:JSON.stringify({ min_personal_message_post_length:3 }),
+    site:JSON.stringify({ post_action_types:[
+      { id:2, name_key:'like', name:'赞', is_flag:false, enabled:true, applies_to:[], position:0 },
+      { id:6, name_key:'notify_user', name:'私信', is_flag:true, enabled:true, require_message:true, applies_to:['Post'], position:1 },
+      { id:7, name_key:'notify_moderators', name:'其他内容', description:'需要管理人员注意', is_flag:true, enabled:true, require_message:true, applies_to:boostTarget, position:9 },
+      { id:3, name_key:'off_topic', name:'偏离话题', description:'与讨论<b>无关</b>', is_flag:true, enabled:true, require_message:false, applies_to:boostTarget, position:2 },
+      { id:4, name_key:'inappropriate', name:'不当言论', is_flag:true, enabled:false, require_message:false, applies_to:boostTarget, position:3 },
+      { id:8, name_key:'spam', name:'垃圾信息', is_flag:true, enabled:true, require_message:false, applies_to:boostTarget, position:4 },
+      { id:10, name_key:'illegal', name:'非法', is_flag:true, enabled:true, require_message:true, applies_to:boostTarget, position:8 },
+    ] }),
+  });
+  document.head.appendChild(preloaded);
 
   // 模拟 Discourse MessageBus：脚本订阅 /topic/{id}，测试直接推送消息。
   const bus = new Map();
@@ -87,6 +122,18 @@
   const bubble = (number, text) => [...(article(number)?.querySelectorAll('.ld-preview-boost') || [])]
     .find(item => item.querySelector('.ld-preview-boost-text').textContent === text);
   const deleteControl = (number, text) => bubble(number, text)?.querySelector('.ld-preview-boost-delete');
+  const actionLabels = (number, text) => [...(bubble(number, text)?.querySelectorAll('.ld-preview-boost-action') || [])].map(item => item.textContent);
+  const expand = async (number, text) => { bubble(number, text).querySelector('.ld-preview-boost-text').click(); await settle(); };
+  const flagButton = (number, text) => [...bubble(number, text).querySelectorAll('.ld-preview-boost-action')].find(item => item.textContent === '举报');
+  const flagOptions = () => [...openMenu().querySelectorAll('.ld-preview-post-menu-option:not(.ld-preview-boost-flag-submit)')];
+  const chooseFlag = async name => { flagOptions().find(option => option.textContent.endsWith(name)).click(); await settle(); };
+  const flagSubmit = () => openMenu().querySelector('.ld-preview-boost-flag-submit');
+  async function typeMessage(value) {
+    const message = openMenu().querySelector('.ld-preview-boost-flag-message');
+    message.value = value;
+    message.dispatchEvent(new Event('input', { bubbles:true }));
+    await settle();
+  }
   const bubbles = number => [...(article(number)?.querySelectorAll(':scope > .ld-preview-boosts .ld-preview-boost-text') || [])].map(text => text.textContent);
   const openMenu = () => (state.postMenu && !state.postMenu.hidden ? state.postMenu : null);
   const input = () => openMenu().querySelector('.ld-preview-boost-input');
@@ -112,7 +159,7 @@
     if (running) return;
     running = true; $('#run-tests').disabled = true; $('#test-results').replaceChildren();
     if (state.open) { closePanel(); await until(() => !state.open); }
-    resetFixtures(); writes = []; failNext = null; failDelete = false; holdCreate = false;
+    resetFixtures(); writes = []; reads = []; failNext = null; failDelete = false; failFlag = false; holdCreate = false;
     state.viewMode = 'original';
     await openTopic(300);
     const results = [];
@@ -177,16 +224,16 @@
       assert(!openMenu(), '再次点击 🚀 应关闭输入框');
     });
     await test('点击自己的 Boost 显示删除，删除后恢复 🚀', async () => {
-      assert(deleteControl(2, '已发过').hidden, '删除按钮应先隐藏');
-      bubble(2, '已发过').querySelector('.ld-preview-boost-text').click(); await settle();
-      assert(!deleteControl(2, '已发过').hidden, '点击气泡应显示删除');
+      assert(!deleteControl(2, '已发过'), '删除按钮应先隐藏');
+      await expand(2, '已发过');
+      assert(actionLabels(2, '已发过').join() === '删除', `本人的 Boost 只应可删除：${actionLabels(2, '已发过').join()}`);
       deleteControl(2, '已发过').click(); await until(() => !article(2).querySelector('.ld-preview-boosts'));
       assert(lastWrite().method === 'DELETE' && lastWrite().path === '/discourse-boosts/boosts/800', `请求不正确：${JSON.stringify(lastWrite())}`);
       assert(boostButton(2) && state.toast.textContent === 'Boost 已删除', '删除后应恢复 🚀 并提示');
     });
     await test('删除他人的 Boost 需再次确认；失败时保留气泡', async () => {
       const count = writes.length;
-      bubble(3, '前排').querySelector('.ld-preview-boost-text').click(); await settle();
+      await expand(3, '前排');
       deleteControl(3, '前排').click(); await settle();
       assert(writes.length === count && deleteControl(3, '前排').textContent === '确认删除', '第一次点击只应进入确认');
       failDelete = true; deleteControl(3, '前排').click(); await until(() => state.toast.textContent === '删除太频繁');
@@ -199,14 +246,17 @@
       await publish(300, message); await publish(300, message);
       await publish(300, { ...message, id:999999 });
       assert(bubbles(4).join() === '路过' && boostButton(4), `新增推送不正确：${bubbles(4).join()}`);
-      assert(!deleteControl(4, '路过'), '他人推送的 Boost 不应显示删除');
+      await expand(4, '路过'); await until(() => actionLabels(4, '路过').length);
+      assert(reads.join() === '/discourse-boosts/boosts/950' && actionLabels(4, '路过').join() === '举报', `推送的 Boost 应点击后查询权限：${actionLabels(4, '路过').join()}`);
       await publish(300, { type:'boost_removed', id:30004, boost_id:950 });
       assert(!article(4).querySelector('.ld-preview-boosts'), '删除推送后气泡应移除');
     });
     await test('实时推送本人的 Boost：关闭输入框并隐藏 🚀，可删除；删除推送后恢复', async () => {
       boostButton(4).click(); await until(() => openMenu());
       await publish(300, { type:'boost_added', id:30004, boost:{ id:951, cooked:'<p>别处发的</p>', user:{ id:1, username:'local_test', avatar_template:avatar } } });
-      assert(!openMenu() && !boostButton(4) && deleteControl(4, '别处发的'), '本人推送后状态不正确');
+      assert(!openMenu() && !boostButton(4), '本人推送后应关闭输入框并隐藏 🚀');
+      await expand(4, '别处发的');
+      assert(actionLabels(4, '别处发的').join() === '删除' && reads.length === 1, '本人推送的 Boost 应直接可删除');
       await publish(300, { type:'boost_removed', id:30004, boost_id:951 });
       assert(boostButton(4) && bubbles(4).length === 0, '删除推送后应恢复 🚀');
     });
@@ -216,7 +266,57 @@
       await publish(300, { type:'boost_added', id:30004, boost:{ id:nextBoostId, cooked:'<p>先到</p>', user:{ id:1, username:'local_test', avatar_template:avatar } } });
       releaseCreate(); releaseCreate = null; holdCreate = false;
       await until(() => state.toast.textContent === 'Boost 已发送');
+      await expand(4, '先到');
       assert(bubbles(4).join() === '先到' && deleteControl(4, '先到'), `气泡重复或不可删除：${bubbles(4).join()}`);
+    });
+    await test('举报菜单在面板内，Esc 关闭；收起气泡操作时一并关闭', async () => {
+      await expand(5, '路人');
+      flagButton(5, '路人').click(); await until(() => openMenu());
+      const menu = openMenu().getBoundingClientRect(), panel = state.scroll.getBoundingClientRect();
+      assert(menu.left >= panel.left - 1 && menu.right <= panel.right + 1, '举报菜单超出面板');
+      window.dispatchEvent(new KeyboardEvent('keydown', { key:'Escape' })); await settle();
+      assert(!openMenu() && state.open, 'Esc 应只关闭举报菜单');
+      flagButton(5, '路人').click(); await until(() => openMenu());
+      bubble(5, '路人').querySelector('.ld-preview-boost-text').click(); await settle();
+      assert(!openMenu() && bubble(5, '路人').querySelector('.ld-preview-boost-actions').hidden, '收起操作时应关闭举报菜单');
+    });
+    await test('举报他人的 Boost：只列出适用且启用的类型，选择后提交', async () => {
+      await expand(5, '路人');
+      assert(actionLabels(5, '路人').join() === '举报', `他人的 Boost 只应可举报：${actionLabels(5, '路人').join()}`);
+      flagButton(5, '路人').click(); await until(() => openMenu());
+      assert(flagOptions().map(option => option.textContent).join() === '偏离话题,垃圾信息,非法,其他内容', `举报类型不正确：${flagOptions().map(option => option.textContent).join()}`);
+      assert(flagOptions()[0].title === '与讨论无关', '说明应为纯文本提示');
+      assert(flagSubmit().disabled, '未选择类型时不可提交');
+      const count = writes.length;
+      await chooseFlag('垃圾信息');
+      assert(!flagSubmit().disabled && openMenu().querySelector('.ld-preview-boost-flag-message').hidden, '无需说明的类型应可直接提交');
+      flagSubmit().click(); await until(() => writes.length === count + 1);
+      assert(lastWrite().path === '/discourse-boosts/boosts/802/flags' && JSON.stringify(lastWrite().body) === '{"flag_type_id":8}', `举报请求不正确：${JSON.stringify(lastWrite())}`);
+      await until(() => !openMenu());
+      assert(state.toast.textContent === '已举报，管理人员会尽快处理', `提示不正确：${state.toast.textContent}`);
+      await expand(5, '路人');
+      assert(actionLabels(5, '路人').join() === '已举报' && bubble(5, '路人').querySelector('.ld-preview-boost-action').disabled, '举报后应显示已举报');
+    });
+    await test('审核中的举报显示已举报，不能重复举报', async () => {
+      await expand(5, '已举报过');
+      assert(actionLabels(5, '已举报过').join() === '已举报' && !openMenu(), '审核中的举报状态不正确');
+    });
+    await test('需要说明的类型：字数不足不可提交，非法内容需确认；失败时保留输入', async () => {
+      await expand(5, '再来'); flagButton(5, '再来').click(); await until(() => openMenu());
+      await chooseFlag('其他内容');
+      const hint = () => openMenu().querySelector('.ld-preview-boost-flag-hint').textContent;
+      assert(!openMenu().querySelector('.ld-preview-boost-flag-message').hidden && flagSubmit().disabled && hint() === '至少输入 3 个字', `说明要求不正确：${hint()}`);
+      await typeMessage('ab'); assert(flagSubmit().disabled, '少于 3 个字不应可提交');
+      await typeMessage('违规内容'); assert(!flagSubmit().disabled && hint() === '还可输入 496 个字', `说明计数不正确：${hint()}`);
+      await chooseFlag('非法');
+      const confirm = openMenu().querySelector('.ld-preview-boost-flag-confirm input');
+      assert(!confirm.closest('label').hidden && flagSubmit().disabled, '非法内容应先确认');
+      confirm.click(); await settle();
+      assert(!flagSubmit().disabled, '确认后应可提交');
+      failFlag = true; flagSubmit().click(); await until(() => state.toast.textContent === '你已经举报过了');
+      assert(openMenu() && !flagSubmit().disabled && openMenu().querySelector('.ld-preview-boost-flag-message').value === '违规内容', '失败后应保留输入');
+      flagSubmit().click(); await until(() => !openMenu());
+      assert(lastWrite().path === '/discourse-boosts/boosts/804/flags' && lastWrite().body.flag_type_id === 10 && lastWrite().body.message === '违规内容', `举报请求不正确：${JSON.stringify(lastWrite())}`);
     });
     await test('发送期间切换话题，结果记在原楼层且不影响新话题', async () => {
       boostButton(2).click(); await until(() => openMenu());
