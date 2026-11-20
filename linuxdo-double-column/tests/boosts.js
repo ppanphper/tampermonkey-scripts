@@ -1,4 +1,4 @@
-/* 本地集成回归：使用正式启动入口，验证楼层 Boost 的发送入口、长度校验、写入请求与失败处理。 */
+/* 本地集成回归：使用正式启动入口，验证楼层 Boost 的发送、删除、实时推送、长度校验与失败处理。 */
 (async () => {
   'use strict';
   const source = await (await fetch('../linuxdo-double-column.user.js')).text();
@@ -13,7 +13,7 @@
   }
   const settle = async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); };
 
-  let writes = [], failNext = null, holdCreate = false, releaseCreate = null, nextBoostId = 900;
+  let writes = [], failNext = null, failDelete = false, holdCreate = false, releaseCreate = null, nextBoostId = 900;
   const avatar = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="48" height="48"%3E%3Crect width="48" height="48" rx="24" fill="%23dce8e1"/%3E%3C/svg%3E';
   const me = { id:1, username:'local_test', name:'本地测试用户', avatar_template:avatar };
   const fixtures = {};
@@ -29,7 +29,8 @@
     // 第 2 楼已有本人 Boost，服务端返回 can_boost=false；第 3 楼已有他人 Boost；第 5 楼未带该字段（如未登录）。
     Object.assign(fixtures[300].posts[1], { can_boost:false, boosts:[{ id:800, cooked:'<p>已发过</p>', can_delete:true, user:me }] });
     delete fixtures[300].posts[4].can_boost;
-    fixtures[300].posts[2].boosts = [{ id:801, cooked:'<p>前排</p>', user:{ username:'other', avatar_template:avatar } }];
+    // 他人的 Boost 带 can_delete，模拟版主可删除。
+    fixtures[300].posts[2].boosts = [{ id:801, cooked:'<p>前排</p>', can_delete:true, user:{ id:2, username:'other', avatar_template:avatar } }];
   }
   resetFixtures();
 
@@ -54,9 +55,21 @@
       if (failNext) { const failure = failNext; failNext = null; return json(failure.body, failure.status); }
       return json({ id:nextBoostId++, cooked:`<p>${body.raw}</p>`, can_delete:true, can_flag:false, user:me });
     }
+    if (/^\/discourse-boosts\/boosts\/\d+$/.test(url.pathname) && method === 'DELETE') {
+      if (failDelete) { failDelete = false; return json({ errors:['删除太频繁'] }, 429); }
+      return new Response(null, { status:204 });
+    }
     if (url.pathname === '/topics/timings') return json({});
     return json({ errors:[`未模拟的接口 ${method} ${url.pathname}`] }, 404);
   };
+
+  // 模拟 Discourse MessageBus：脚本订阅 /topic/{id}，测试直接推送消息。
+  const bus = new Map();
+  window.MessageBus = {
+    subscribe:(channel, handler) => { bus.set(channel, handler); },
+    unsubscribe:channel => { bus.delete(channel); },
+  };
+  const publish = async (topicId, message) => { bus.get(`/topic/${topicId}`)?.(message); await settle(); };
 
   const script = document.createElement('script');
   script.textContent = source.slice(0, startup)
@@ -67,7 +80,13 @@
 
   const click = selector => $(selector).dispatchEvent(new MouseEvent('click', { bubbles:true, cancelable:true, button:0 }));
   const article = number => state.list?.querySelector(`article[data-post-number="${number}"]`);
-  const boostButton = number => article(number)?.querySelector('.ld-preview-post-footer .ld-preview-boost-button');
+  const boostButton = number => {
+    const button = article(number)?.querySelector('.ld-preview-post-footer .ld-preview-boost-button');
+    return button && !button.closest('[hidden]') ? button : null;
+  };
+  const bubble = (number, text) => [...(article(number)?.querySelectorAll('.ld-preview-boost') || [])]
+    .find(item => item.querySelector('.ld-preview-boost-text').textContent === text);
+  const deleteControl = (number, text) => bubble(number, text)?.querySelector('.ld-preview-boost-delete');
   const bubbles = number => [...(article(number)?.querySelectorAll(':scope > .ld-preview-boosts .ld-preview-boost-text') || [])].map(text => text.textContent);
   const openMenu = () => (state.postMenu && !state.postMenu.hidden ? state.postMenu : null);
   const input = () => openMenu().querySelector('.ld-preview-boost-input');
@@ -93,7 +112,7 @@
     if (running) return;
     running = true; $('#run-tests').disabled = true; $('#test-results').replaceChildren();
     if (state.open) { closePanel(); await until(() => !state.open); }
-    resetFixtures(); writes = []; failNext = null; holdCreate = false;
+    resetFixtures(); writes = []; failNext = null; failDelete = false; holdCreate = false;
     state.viewMode = 'original';
     await openTopic(300);
     const results = [];
@@ -107,6 +126,7 @@
 
     await test('只在 can_boost 为真的楼层显示 🚀，位于复制链接与更多之间', async () => {
       assert(boostButton(1) && !boostButton(2) && !boostButton(5), '🚀 显示条件不正确');
+      assert(!article(5).querySelector('.ld-preview-boost-wrap'), '未带 can_boost 的楼层不应创建按钮');
       const labels = [...article(1).querySelector('.ld-preview-post-footer').children].map(node => node.textContent.trim().slice(0, 2));
       assert(labels.indexOf('🔗') + 1 === labels.indexOf('🚀') && labels.indexOf('🚀') + 1 === labels.findIndex(label => label.startsWith('⋯')), `按钮顺序不正确：${labels.join(' ')}`);
     });
@@ -156,10 +176,52 @@
       boostButton(4).click(); await settle();
       assert(!openMenu(), '再次点击 🚀 应关闭输入框');
     });
-    await test('发送期间切换话题，结果记在原楼层且不影响新话题', async () => {
+    await test('点击自己的 Boost 显示删除，删除后恢复 🚀', async () => {
+      assert(deleteControl(2, '已发过').hidden, '删除按钮应先隐藏');
+      bubble(2, '已发过').querySelector('.ld-preview-boost-text').click(); await settle();
+      assert(!deleteControl(2, '已发过').hidden, '点击气泡应显示删除');
+      deleteControl(2, '已发过').click(); await until(() => !article(2).querySelector('.ld-preview-boosts'));
+      assert(lastWrite().method === 'DELETE' && lastWrite().path === '/discourse-boosts/boosts/800', `请求不正确：${JSON.stringify(lastWrite())}`);
+      assert(boostButton(2) && state.toast.textContent === 'Boost 已删除', '删除后应恢复 🚀 并提示');
+    });
+    await test('删除他人的 Boost 需再次确认；失败时保留气泡', async () => {
+      const count = writes.length;
+      bubble(3, '前排').querySelector('.ld-preview-boost-text').click(); await settle();
+      deleteControl(3, '前排').click(); await settle();
+      assert(writes.length === count && deleteControl(3, '前排').textContent === '确认删除', '第一次点击只应进入确认');
+      failDelete = true; deleteControl(3, '前排').click(); await until(() => state.toast.textContent === '删除太频繁');
+      assert(bubble(3, '前排') && !deleteControl(3, '前排').disabled, '失败后应保留气泡并可重试');
+      deleteControl(3, '前排').click(); await until(() => !bubble(3, '前排'));
+      assert(bubbles(3).join() === '后排' && !boostButton(3), `删除他人 Boost 后状态不正确：${bubbles(3).join()}`);
+    });
+    await test('实时推送：他人新增与删除，重复推送和未加载楼层不出错', async () => {
+      const message = { type:'boost_added', id:30004, boost:{ id:950, cooked:'<p>路过</p>', user:{ id:3, username:'third', avatar_template:avatar } } };
+      await publish(300, message); await publish(300, message);
+      await publish(300, { ...message, id:999999 });
+      assert(bubbles(4).join() === '路过' && boostButton(4), `新增推送不正确：${bubbles(4).join()}`);
+      assert(!deleteControl(4, '路过'), '他人推送的 Boost 不应显示删除');
+      await publish(300, { type:'boost_removed', id:30004, boost_id:950 });
+      assert(!article(4).querySelector('.ld-preview-boosts'), '删除推送后气泡应移除');
+    });
+    await test('实时推送本人的 Boost：关闭输入框并隐藏 🚀，可删除；删除推送后恢复', async () => {
       boostButton(4).click(); await until(() => openMenu());
+      await publish(300, { type:'boost_added', id:30004, boost:{ id:951, cooked:'<p>别处发的</p>', user:{ id:1, username:'local_test', avatar_template:avatar } } });
+      assert(!openMenu() && !boostButton(4) && deleteControl(4, '别处发的'), '本人推送后状态不正确');
+      await publish(300, { type:'boost_removed', id:30004, boost_id:951 });
+      assert(boostButton(4) && bubbles(4).length === 0, '删除推送后应恢复 🚀');
+    });
+    await test('发送结果与实时推送先后到达，只显示一条', async () => {
+      boostButton(4).click(); await until(() => openMenu());
+      holdCreate = true; await type('先到', { }); await until(() => Boolean(releaseCreate));
+      await publish(300, { type:'boost_added', id:30004, boost:{ id:nextBoostId, cooked:'<p>先到</p>', user:{ id:1, username:'local_test', avatar_template:avatar } } });
+      releaseCreate(); releaseCreate = null; holdCreate = false;
+      await until(() => state.toast.textContent === 'Boost 已发送');
+      assert(bubbles(4).join() === '先到' && deleteControl(4, '先到'), `气泡重复或不可删除：${bubbles(4).join()}`);
+    });
+    await test('发送期间切换话题，结果记在原楼层且不影响新话题', async () => {
+      boostButton(2).click(); await until(() => openMenu());
       holdCreate = true; await type('稍等', { }); await until(() => Boolean(releaseCreate));
-      const oldArticle = article(4);
+      const oldArticle = article(2);
       await openTopic(400);
       releaseCreate(); releaseCreate = null; holdCreate = false; await wait(60); await settle();
       assert(!openMenu() && !state.list.querySelector('.ld-preview-boosts'), '新话题不应出现气泡或输入框');

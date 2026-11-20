@@ -1547,6 +1547,28 @@
         overflow-wrap: anywhere;
       }
 
+      #${PANEL_ID} button.ld-preview-boost-text,
+      #${PANEL_ID} .ld-preview-boost-delete {
+        padding: 0;
+        color: inherit;
+        background: transparent;
+        border: 0;
+        cursor: pointer;
+        font: inherit;
+        line-height: inherit;
+        text-align: left;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-delete {
+        margin-left: 2px;
+        color: var(--danger, #e45735);
+      }
+
+      #${PANEL_ID} .ld-preview-boost-delete:disabled {
+        cursor: default;
+        opacity: 0.6;
+      }
+
       #${PANEL_ID} .ld-preview-boost-text p {
         display: inline;
         margin: 0;
@@ -1584,6 +1606,10 @@
       #${PANEL_ID} .ld-preview-post-more-wrap {
         position: relative;
         display: inline-flex;
+      }
+
+      #${PANEL_ID} .ld-preview-post-more-wrap[hidden] {
+        display: none;
       }
 
       #${PANEL_ID} .ld-preview-post-menu {
@@ -3080,17 +3106,24 @@
     if (created && state.topicMeta === meta) openBookmarkFolderMenu(state.topicBookmarkMenu, button, context);
   }
 
-  // 与 Discourse resolveShareUrl 一致：登录且站点开启徽章和分享链接用户名时附加 ?u=，访问计入分享徽章。
-  function shareUrlSuffix() {
+  // #data-preloaded 在 Discourse 启动后仍保留；登录状态变化会整页刷新，因此每次现读即可。
+  function readPreloaded() {
     try {
       const preloaded = JSON.parse(document.getElementById('data-preloaded')?.textContent || '{}');
-      const user = preloaded.currentUser ? JSON.parse(preloaded.currentUser) : null;
-      const settings = preloaded.siteSettings ? JSON.parse(preloaded.siteSettings) : {};
-      if (!user?.username || !settings.enable_badges || !settings.allow_username_in_share_links) return '';
-      return `?u=${encodeURIComponent(user.username.toLowerCase())}`;
+      return {
+        user: preloaded.currentUser ? JSON.parse(preloaded.currentUser) : null,
+        settings: preloaded.siteSettings ? JSON.parse(preloaded.siteSettings) : {},
+      };
     } catch {
-      return '';
+      return { user: null, settings: {} };
     }
+  }
+
+  // 与 Discourse resolveShareUrl 一致：登录且站点开启徽章和分享链接用户名时附加 ?u=，访问计入分享徽章。
+  function shareUrlSuffix() {
+    const { user, settings } = readPreloaded();
+    if (!user?.username || !settings.enable_badges || !settings.allow_username_in_share_links) return '';
+    return `?u=${encodeURIComponent(user.username.toLowerCase())}`;
   }
 
   function copyPostLink(post) {
@@ -3708,7 +3741,7 @@
 
     if (!treeMode && post.reply_count > 0) footer.appendChild(createRepliesToggle(post, article));
     footer.append(createBookmarkButton(post), createLikeButton(post), copyButton);
-    if (post.can_boost) footer.appendChild(createBoostButton(post, article));
+    if (typeof post.can_boost === 'boolean') footer.appendChild(createBoostButton(post, article));
     footer.append(moreWrap, replyButton);
 
     article.append(body, footer);
@@ -3742,13 +3775,103 @@
           avatar.appendChild(image);
         }
       }
-      const text = document.createElement('span');
+      // 可删除的气泡与原生一致：点击内容才显示删除，避免误删。
+      const text = document.createElement(boost.can_delete ? 'button' : 'span');
       text.className = 'ld-preview-boost-text';
       text.innerHTML = boost.cooked;
       bubble.append(avatar, text);
+      if (boost.can_delete) {
+        text.type = 'button';
+        text.title = '点击显示删除';
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'ld-preview-boost-delete';
+        remove.textContent = '删除';
+        remove.hidden = true;
+        text.addEventListener('click', () => {
+          remove.hidden = !remove.hidden;
+          remove.classList.remove('is-confirming');
+          remove.textContent = '删除';
+        });
+        remove.addEventListener('click', () => deleteBoost(post, boost, remove));
+        bubble.appendChild(remove);
+      }
       list.appendChild(bubble);
     }
     return list;
+  }
+
+  function isCurrentUser(user) {
+    const id = user?.id;
+    return id != null && id === readPreloaded().user?.id;
+  }
+
+  // 同一用户在每楼只有一条 Boost；实时推送与发送结果可能先后到达，按 ID 或用户合并。
+  function upsertBoost(post, boost) {
+    const boosts = Array.isArray(post.boosts) ? post.boosts : [];
+    const userId = boost.user?.id;
+    const index = boosts.findIndex((item) => item.id === boost.id || (userId != null && item.user?.id === userId));
+    const own = isCurrentUser(boost.user);
+    const merged = { ...(own ? { can_delete: true } : {}), ...(index >= 0 ? boosts[index] : {}), ...boost };
+    post.boosts = index >= 0 ? boosts.map((item, i) => (i === index ? merged : item)) : [...boosts, merged];
+    if (own) post.can_boost = false;
+  }
+
+  function removeBoost(post, boostId) {
+    const boosts = Array.isArray(post.boosts) ? post.boosts : [];
+    const removed = boosts.find((item) => item.id === boostId);
+    if (!removed) return false;
+    post.boosts = boosts.filter((item) => item !== removed);
+    if (isCurrentUser(removed.user)) post.can_boost = true;
+    return true;
+  }
+
+  // 按 post 的当前数据刷新某个楼层的气泡和 🚀 按钮。
+  function syncPostBoosts(post, article) {
+    const footer = article.querySelector(':scope > .ld-preview-post-footer');
+    const current = article.querySelector(':scope > .ld-preview-boosts');
+    const list = renderBoosts(post);
+    if (current && list) current.replaceWith(list);
+    else if (current) current.remove();
+    else if (list) footer?.after(list);
+    const wrap = footer?.querySelector(':scope > .ld-preview-boost-wrap');
+    if (!wrap) return;
+    wrap.hidden = !post.can_boost;
+    if (wrap.hidden && state.postMenu && wrap.contains(state.postMenu)) hidePostMenu();
+  }
+
+  async function deleteBoost(post, boost, control) {
+    // 删除他人的 Boost（版主权限）需再点一次确认，与原生的确认框对应。
+    if (!isCurrentUser(boost.user) && !control.classList.contains('is-confirming')) {
+      control.classList.add('is-confirming');
+      control.textContent = '确认删除';
+      return;
+    }
+    const article = control.closest('article');
+    control.disabled = true;
+    try {
+      await apiRequest('DELETE', `/discourse-boosts/boosts/${boost.id}`);
+      removeBoost(post, boost.id);
+      if (article) syncPostBoosts(post, article);
+      showToast('Boost 已删除');
+    } catch (error) {
+      control.disabled = false;
+      showToast(error.message || '删除失败');
+    }
+  }
+
+  function handleBoostMessage(msg) {
+    const post = state.allPosts.get(msg.id);
+    if (!post) return;
+    if (msg.type === 'boost_added') {
+      if (!msg.boost?.id) return;
+      upsertBoost(post, msg.boost);
+    } else if (!removeBoost(post, msg.boost_id)) {
+      return;
+    }
+    for (const article of state.list?.querySelectorAll(`article.ld-preview-post[data-post-id="${post.id}"]`) || []) {
+      syncPostBoosts(post, article);
+    }
   }
 
   // 与服务端校验一致：按字形簇计数，表情短代码和 Unicode 表情各算一个字。
@@ -3797,7 +3920,8 @@
     menu.append(input, count, submit);
 
     const wrap = document.createElement('span');
-    wrap.className = 'ld-preview-post-more-wrap';
+    wrap.className = 'ld-preview-post-more-wrap ld-preview-boost-wrap';
+    wrap.hidden = !post.can_boost;
     button.setAttribute('aria-haspopup', 'true');
     button.setAttribute('aria-expanded', 'false');
     wrap.append(button, menu);
@@ -3824,14 +3948,10 @@
       update();
       try {
         const boost = await apiRequest('POST', `/discourse-boosts/posts/${post.id}/boosts`, { raw });
-        post.boosts = [...(Array.isArray(post.boosts) ? post.boosts : []), boost];
+        upsertBoost(post, boost);
         post.can_boost = false;
-        if (state.postMenu === menu) hidePostMenu();
-        wrap.remove();
-        const list = renderBoosts(post);
-        const current = article.querySelector(':scope > .ld-preview-boosts');
-        if (current) current.replaceWith(list);
-        else article.querySelector(':scope > .ld-preview-post-footer')?.after(list);
+        input.value = '';
+        syncPostBoosts(post, article);
         showToast('Boost 已发送');
       } catch (requestError) {
         showToast(requestError.message || 'Boost 发送失败');
@@ -4924,6 +5044,10 @@
 
   async function handleLiveMessage(topicId, msg) {
     if (!state.open || String(topicId) !== String(state.currentTopicId)) return;
+    if (msg?.type === 'boost_added' || msg?.type === 'boost_removed') {
+      handleBoostMessage(msg);
+      return;
+    }
     if (!msg || msg.type !== 'created' || !msg.id) return;
     if (state.streamIndex.has(msg.id)) return;
     topicCache.delete(topicId);
