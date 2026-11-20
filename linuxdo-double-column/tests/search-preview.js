@@ -15,11 +15,29 @@
   let requests = [], delayTopic = '', releaseTopic = null, failTopic = '', delayBatch = '', releaseBatch = null;
   const nativeClicks = [], copied = [];
   Object.defineProperty(navigator, 'clipboard', { configurable:true, value:{ writeText:async text => { copied.push(text); } } });
+  // 按 Discourse 服务端格式模拟 Post Badges 组件的 user_badges：只含所给楼层中带徽章的用户。
+  const badgeDefs = {
+    47:{ id:47, name:'Devotee', slug:'devotee', description:'连续 365 天访问', icon:'far-eye', image_url:null, badge_type_id:1 },
+    102:{ id:102, name:'种子用户', slug:'-', description:'论坛创立前 1 个月内加入的种子用户！', icon:'seedling', image_url:null, badge_type_id:2 },
+    130:{ id:130, name:'破界者', slug:'-', description:'图片徽章', icon:'hammer', image_url:'/missing-badge.png', badge_type_id:3 },
+  };
+  const userBadgeIds = { 7:[47, 102], 8:[130], 9:[102] };
+  function userBadgesFor(posts) {
+    const users = {}, badges = {};
+    for (const { user_id:id } of posts) {
+      if (!userBadgeIds[id]) continue;
+      users[id] = { id, badge_ids:userBadgeIds[id] };
+      for (const badge of userBadgeIds[id]) badges[badge] = badgeDefs[badge];
+    }
+    return { users, badges };
+  }
   function postsFor(id) {
     return Array.from({ length:60 }, (_, i) => ({
       id:Number(id) * 1000 + i + 1, post_number:i < 2 ? i + 1 : i + 2,
-      topic_id:Number(id), username:'local_test', name:'本地测试用户',
-      avatar_template:'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="48" height="48"%3E%3Crect width="48" height="48" rx="24" fill="%23dce8e1"/%3E%3C/svg%3E', created_at:'2026-10-01T10:00:00Z', reply_count:0,
+      topic_id:Number(id), username:'local_test', name:'本地测试用户', user_id:i === 1 ? 7 : i === 2 ? 8 : i >= 20 ? 9 : 1,
+      avatar_template:i === 1
+        ? 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="48" height="48"%3E%3Ctitle%3Esquare%3C/title%3E%3Crect width="48" height="48" fill="%23c9d7f0"/%3E%3C/svg%3E'
+        : 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="48" height="48"%3E%3Crect width="48" height="48" rx="24" fill="%23dce8e1"/%3E%3C/svg%3E', created_at:'2026-10-01T10:00:00Z', reply_count:0,
       reply_to_post_number:null, actions_summary:[],
       ...(i === 1 ? { staff:true, admin:true, user_title:'种子用户', primary_group_name:'g-team' } : {}),
       ...(i === 2 ? { user_title:'Merchant Shop', title_is_group:true, primary_group_name:'g-merchant' } : {}),
@@ -41,12 +59,13 @@
       if (id === failTopic) return Response.json({}, { status:500 });
       const posts = postsFor(id);
       return Response.json({ id:Number(id), slug:'search-demo', title:`搜索预览 · 话题 ${id}`, highest_post_number:61,
-        last_read_post_number:12, post_stream:{ posts:posts.slice(0,20), stream:posts.map(post => post.id) } });
+        last_read_post_number:12, post_stream:{ posts:posts.slice(0,20), stream:posts.map(post => post.id) }, user_badges:userBadgesFor(posts.slice(0,20)) });
     }
     const batch = url.pathname.match(/^\/t\/(\d+)\/posts\.json$/);
     if (batch) {
       if (batch[1] === delayBatch) { delayBatch = ''; await new Promise(resolve => { releaseBatch = resolve; }); }
-      return Response.json({ post_stream:{ posts:postsFor(batch[1]).filter(post => url.searchParams.getAll('post_ids[]').includes(String(post.id))) } });
+      const posts = postsFor(batch[1]).filter(post => url.searchParams.getAll('post_ids[]').includes(String(post.id)));
+      return Response.json({ post_stream:{ posts }, user_badges:userBadgesFor(posts) });
     }
     const numbered = url.pathname.match(/^\/posts\/by_number\/(\d+)\/(\d+)\.json$/);
     if (numbered) {
@@ -57,10 +76,10 @@
   };
   const script = document.createElement('script');
   script.textContent = source.slice(0, startup)
-    + '\n  window.searchTestApi = { state, closePanel, setViewMode, clearHoverPreload };\n'
+    + '\n  window.searchTestApi = { state, closePanel, setViewMode, clearHoverPreload, posterBadges };\n'
     + source.slice(startup);
   document.head.appendChild(script);
-  const { state, closePanel, setViewMode, clearHoverPreload } = window.searchTestApi;
+  const { state, closePanel, setViewMode, clearHoverPreload, posterBadges } = window.searchTestApi;
   // 未接管的链接阻止实际离开测试页，记录是否仍可到达站点处理器。
   document.addEventListener('click', event => {
     const link = event.target.closest('a');
@@ -126,6 +145,31 @@
       assert(groupTitle.matches('.user-title--merchant-shop.user-title--g-merchant') && groupTitle.title === 'g-merchant', '群组头衔类名错误');
       const groupLink = groupTitle.querySelector(':scope > a.user-group[href="/g/g-merchant"]');
       assert(groupLink?.textContent === 'Merchant Shop' && getComputedStyle(groupLink).color === 'rgb(245, 191, 3)', '群组头衔链接或颜色错误');
+    });
+    await test('名字后显示 Post Badges 徽章图标，按服务端顺序链接到用户徽章页', async () => {
+      const icons = [...article(2).querySelectorAll('.ld-preview-post-header > .ld-preview-poster-icons > a')];
+      assert(icons.length === 2, `徽章数量不正确：${icons.length}`);
+      assert(icons[0].matches('.ld-preview-poster-icon.badge-type-gold[href="/badges/47/devotee?username=local_test"]') && icons[0].title === '连续 365 天访问', '首个徽章链接或说明错误');
+      assert(icons[0].querySelector('svg use').getAttribute('href') === '#far-eye' && icons[1].querySelector('svg use').getAttribute('href') === '#seedling', '徽章图标或顺序错误');
+      assert(getComputedStyle(icons[0].querySelector('svg')).color === 'rgb(231, 195, 0)' && icons[1].matches('.badge-type-silver'), '徽章颜色错误');
+      assert(article(4).querySelector('.ld-preview-poster-icon.badge-type-bronze > img[src="/missing-badge.png"]'), '图片徽章未显示');
+      assert(!article(1).querySelector('.ld-preview-poster-icons'), '没有徽章的用户不应渲染容器');
+    });
+    await test('头像沿用原生 post-avatar 结构，站点光晕与圆角生效，商家光晕照抄', async () => {
+      const frame = article(1).querySelector('.ld-preview-post-header > .ld-preview-avatar-frame.post-avatar');
+      const avatar = frame?.querySelector(':scope > a.main-avatar[data-user-card="local_test"]:not([href]) > img.ld-preview-avatar.avatar');
+      assert(avatar, '头像结构错误');
+      const [a, b] = [frame.getBoundingClientRect(), avatar.getBoundingClientRect()];
+      assert(a.width === b.width && a.height === b.height && b.width > 0, `头像外框尺寸不符：${a.width}×${a.height} / ${b.width}×${b.height}`);
+      assert(getComputedStyle(frame, '::after').boxShadow.includes('rgb(0, 174, 255)'), '站点头像光晕未生效');
+      assert(getComputedStyle(avatar).borderRadius === '50%', '默认头像应为圆形');
+      assert(getComputedStyle(article(2).querySelector('img.avatar')).borderRadius === '10%', '站点头像圆角未生效');
+      const merchant = getComputedStyle(article(4).querySelector('.ld-preview-avatar-frame[data-primary-group="g-merchant"]'), '::after');
+      assert(merchant.boxShadow.includes('rgb(245, 191, 3)') && merchant.animationName === 'ld-preview-avatar-pulse', '商家头像光晕错误');
+    });
+    await test('向下滚动加载的楼层显示 posts.json 返回的徽章', async () => {
+      posterBadges.delete(9); state.scroll.scrollTop = state.scroll.scrollHeight;
+      await until(() => Boolean(article(22)?.querySelector('.ld-preview-poster-icon[href="/badges/102/-?username=local_test"]')));
     });
     await test('同一话题切换命中回复，跳过已删除楼层仍准确定位', async () => {
       const length = history.length; click('#reply-result'); await until(() => state.currentPostNumber === 4);
