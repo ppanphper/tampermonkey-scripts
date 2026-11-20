@@ -21,6 +21,8 @@
       topic_id:Number(id), username:'local_test', name:'本地测试用户',
       avatar_template:'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="48" height="48"%3E%3Crect width="48" height="48" rx="24" fill="%23dce8e1"/%3E%3C/svg%3E', created_at:'2026-10-01T10:00:00Z', reply_count:0,
       reply_to_post_number:null, actions_summary:[],
+      ...(i === 1 ? { staff:true, admin:true, user_title:'种子用户', primary_group_name:'g-team' } : {}),
+      ...(i === 2 ? { user_title:'Merchant Shop', title_is_group:true, primary_group_name:'g-merchant' } : {}),
       boosts:i === 0 ? [
         { id:1, cooked:'<p>前排支持</p>', user:{ username:'boost_user', name:'Boost 用户', avatar_template:'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="48" height="48"%3E%3Crect width="48" height="48" fill="%23f4c7a1"/%3E%3C/svg%3E' } },
         { id:2, cooked:'<p>已注销用户的 Boost</p>', user:null },
@@ -112,6 +114,18 @@
       assert(bubbles[0].textContent === '前排支持' && bubbles[0].querySelector('a[href="/u/boost_user"] img'), 'Boost 内容或头像缺失');
       assert(!bubbles[1].querySelector('a, img') && bubbles[1].textContent === '已注销用户的 Boost', '无用户的 Boost 渲染错误');
       assert(!article(2).querySelector('.ld-preview-boosts'), '没有 Boost 的楼层不应渲染容器');
+    });
+    await test('用户名与头衔沿用 Discourse 类名，站点主题样式生效', async () => {
+      const name = article(2).querySelector('.ld-preview-post-header > .ld-preview-author');
+      assert(name?.matches('.staff.admin.group--g-team') && name.firstElementChild.matches('a.ld-preview-username[href="/u/local_test"]'), '管理人员名字类名错误');
+      assert(getComputedStyle(name.firstElementChild).color === 'rgb(0, 174, 255)', '站点管理人员颜色未生效');
+      const title = article(2).querySelector('.ld-preview-user-title');
+      assert(title.matches('span.user-title.user-title--种子用户') && getComputedStyle(title).animationName === 'holographic', '站点头衔特效未生效');
+      assert(!article(1).querySelector('.ld-preview-author').matches('.staff, .admin, [class*="group--"]'), '普通用户带了多余类名');
+      const groupTitle = article(4).querySelector('.ld-preview-user-title');
+      assert(groupTitle.matches('.user-title--merchant-shop.user-title--g-merchant') && groupTitle.title === 'g-merchant', '群组头衔类名错误');
+      const groupLink = groupTitle.querySelector(':scope > a.user-group[href="/g/g-merchant"]');
+      assert(groupLink?.textContent === 'Merchant Shop' && getComputedStyle(groupLink).color === 'rgb(245, 191, 3)', '群组头衔链接或颜色错误');
     });
     await test('同一话题切换命中回复，跳过已删除楼层仍准确定位', async () => {
       const length = history.length; click('#reply-result'); await until(() => state.currentPostNumber === 4);

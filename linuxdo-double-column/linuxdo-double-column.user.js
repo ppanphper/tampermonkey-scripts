@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Linux.do 双栏阅读预览
 // @namespace    https://linux.do/
-// @version      0.21.0
+// @version      0.21.1
 // @description  在 Linux.do 话题列表、搜索结果和通知中用右侧面板预览帖子（支持原始楼层与树状评论双视图、热门排序、回复/点赞/话题与楼层收藏/投票/时间线及阅读时长上报）
 // @match        https://linux.do/*
 // @homepageURL  https://github.com/ppanphper/tampermonkey-scripts
@@ -1116,6 +1116,11 @@
         border-radius: 50%;
       }
 
+      #${PANEL_ID} .ld-preview-author {
+        display: flex;
+        min-width: 0;
+      }
+
       #${PANEL_ID} .ld-preview-username {
         overflow: hidden;
         color: var(--primary, #202124);
@@ -1401,6 +1406,7 @@
         color: var(--primary, #202124);
         font-size: 14px;
         font-weight: 600;
+        text-decoration: none;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
@@ -1427,6 +1433,11 @@
         font-size: 12px;
         text-overflow: ellipsis;
         white-space: nowrap;
+      }
+
+      #${PANEL_ID} .ld-preview-user-title .user-group {
+        color: inherit;
+        text-decoration: none;
       }
 
       #${PANEL_ID} .ld-preview-flair {
@@ -3499,6 +3510,23 @@
     });
   }
 
+  // Discourse's poster-name classes, so the site theme styles the preview names too.
+  function buildPosterName(post, className) {
+    const wrapper = document.createElement('span');
+    wrapper.className = 'ld-preview-author';
+    if (post.staff) wrapper.classList.add('staff');
+    if (post.admin) wrapper.classList.add('admin');
+    if (post.moderator) wrapper.classList.add('moderator');
+    if (post.group_moderator) wrapper.classList.add('category-moderator');
+    if (post.primary_group_name) wrapper.classList.add(`group--${post.primary_group_name}`);
+    const link = document.createElement('a');
+    link.className = className;
+    link.textContent = post.name || post.username || '匿名';
+    if (post.username) link.href = `/u/${post.username}`;
+    wrapper.appendChild(link);
+    return wrapper;
+  }
+
   function appendUserBadges(container, post) {
     if (post.name && post.username && post.name !== post.username) {
       const secondary = document.createElement('span');
@@ -3508,9 +3536,21 @@
     }
     if (post.user_title) {
       const title = document.createElement('span');
-      title.className = 'ld-preview-user-title';
-      title.textContent = post.user_title;
-      if (post.title_is_group && post.primary_group_name) title.title = post.primary_group_name;
+      const group = post.title_is_group && post.primary_group_name;
+      title.className = 'ld-preview-user-title user-title';
+      for (const name of group ? [post.user_title, group] : [post.user_title]) {
+        title.classList.add(`user-title--${name.replace(/\s+/g, '-').toLowerCase()}`);
+      }
+      if (group) {
+        const link = document.createElement('a');
+        link.className = 'user-group';
+        link.href = `/g/${group}`;
+        link.textContent = post.user_title;
+        title.title = group;
+        title.appendChild(link);
+      } else {
+        title.textContent = post.user_title;
+      }
       container.appendChild(title);
     }
     if (post.flair_url && /^(https?:)?\//.test(post.flair_url)) {
@@ -3559,10 +3599,7 @@
     const head = document.createElement('div');
     head.className = 'ld-preview-embedded-head';
 
-    const name = document.createElement('span');
-    name.className = 'ld-preview-embedded-name';
-    name.textContent = reply.name || reply.username || '匿名';
-    head.appendChild(name);
+    head.appendChild(buildPosterName(reply, 'ld-preview-embedded-name'));
     appendUserBadges(head, reply);
     if (reply.post_number) {
       const floor = document.createElement('span');
@@ -3684,11 +3721,6 @@
     avatar.alt = '';
     avatar.loading = 'lazy';
 
-    const author = document.createElement('a');
-    author.className = 'ld-preview-username';
-    author.textContent = post.name || post.username || '匿名';
-    author.href = post.username ? `/u/${post.username}` : '#';
-
     const meta = document.createElement('span');
     meta.className = 'ld-preview-post-meta';
     let timeText = '';
@@ -3701,7 +3733,7 @@
     }
     meta.textContent = timeText ? `#${post.post_number} · ${timeText}` : `#${post.post_number}`;
 
-    header.append(avatar, author);
+    header.append(avatar, buildPosterName(post, 'ld-preview-username'));
     appendUserBadges(header, post);
     article.appendChild(header);
     if (post.reply_to_post_number) {
