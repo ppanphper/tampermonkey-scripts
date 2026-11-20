@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Linux.do 双栏阅读预览
 // @namespace    https://linux.do/
-// @version      0.20.0
+// @version      0.21.0
 // @description  在 Linux.do 话题列表、搜索结果和通知中用右侧面板预览帖子（支持原始楼层与树状评论双视图、热门排序、回复/点赞/话题与楼层收藏/投票/时间线及阅读时长上报）
 // @match        https://linux.do/*
 // @homepageURL  https://github.com/ppanphper/tampermonkey-scripts
@@ -57,6 +57,8 @@
   const BOOKMARK_FOLDER_MAX_LENGTH = 30;
   const BOOKMARK_NAME_MAX_LENGTH = 100;
   const BOOKMARK_FOLDER_INVALID = /[[\]<>"&]/;
+  const BOOST_MAX_LENGTH = 16;
+  const BOOST_MAX_EMOJI = 5;
 
   const state = {
     panel: null,
@@ -1651,6 +1653,39 @@
         border-radius: 4px;
         font: inherit;
         font-size: 13px;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-menu {
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-menu .ld-preview-post-menu-option {
+        flex: none;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-input {
+        width: 150px;
+        min-width: 0;
+        flex: 1 1 auto;
+        padding: 5px 8px;
+        color: var(--primary, #202124);
+        background: var(--secondary, #ffffff);
+        border: 1px solid var(--primary-low-mid, #cccccc);
+        border-radius: 4px;
+        font: inherit;
+        font-size: 13px;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-count {
+        color: var(--primary-medium, #757575);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      #${PANEL_ID} .ld-preview-boost-count.is-over {
+        color: var(--danger, #e45735);
       }
 
       #${PANEL_ID} .ld-preview-post-menu-separator {
@@ -3672,7 +3707,9 @@
     replyButton.addEventListener('click', () => openComposer(post.post_number, post.username || ''));
 
     if (!treeMode && post.reply_count > 0) footer.appendChild(createRepliesToggle(post, article));
-    footer.append(createBookmarkButton(post), createLikeButton(post), copyButton, moreWrap, replyButton);
+    footer.append(createBookmarkButton(post), createLikeButton(post), copyButton);
+    if (post.can_boost) footer.appendChild(createBoostButton(post, article));
+    footer.append(moreWrap, replyButton);
 
     article.append(body, footer);
     const boosts = renderBoosts(post);
@@ -3712,6 +3749,113 @@
       list.appendChild(bubble);
     }
     return list;
+  }
+
+  // 与服务端校验一致：按字形簇计数，表情短代码和 Unicode 表情各算一个字。
+  function boostStats(raw) {
+    let emoji = 0;
+    const text = raw.replace(/:[a-z0-9_+-]+(?::t\d)?:/g, () => {
+      emoji += 1;
+      return '\uFFFC';
+    });
+    const clusters = typeof Intl.Segmenter === 'function'
+      ? Array.from(new Intl.Segmenter().segment(text), (item) => item.segment)
+      : Array.from(text);
+    emoji += clusters.filter((cluster) => /\p{Extended_Pictographic}/u.test(cluster)).length;
+    return { length: clusters.length, emoji };
+  }
+
+  function boostError(raw) {
+    if (!raw) return '请输入 Boost 内容';
+    const { length, emoji } = boostStats(raw);
+    if (length > BOOST_MAX_LENGTH) return `Boost 最多 ${BOOST_MAX_LENGTH} 个字`;
+    if (emoji > BOOST_MAX_EMOJI) return `Boost 最多 ${BOOST_MAX_EMOJI} 个表情`;
+    return '';
+  }
+
+  function createBoostButton(post, article) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ld-preview-post-action ld-preview-boost-button';
+    button.textContent = '🚀';
+    button.title = 'Boost：给此楼留一条短评';
+
+    const menu = document.createElement('div');
+    menu.className = 'ld-preview-post-menu ld-preview-boost-menu';
+    menu.hidden = true;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'ld-preview-boost-input';
+    input.placeholder = post.username ? `Boost ${post.username}…` : 'Boost…';
+    input.setAttribute('aria-label', 'Boost 内容');
+    const count = document.createElement('span');
+    count.className = 'ld-preview-boost-count';
+    const submit = document.createElement('button');
+    submit.type = 'button';
+    submit.className = 'ld-preview-post-menu-option';
+    submit.textContent = '发送';
+    menu.append(input, count, submit);
+
+    const wrap = document.createElement('span');
+    wrap.className = 'ld-preview-post-more-wrap';
+    button.setAttribute('aria-haspopup', 'true');
+    button.setAttribute('aria-expanded', 'false');
+    wrap.append(button, menu);
+
+    let busy = false;
+    const update = () => {
+      const raw = input.value.trim();
+      const { length } = boostStats(raw);
+      count.textContent = `${length}/${BOOST_MAX_LENGTH}`;
+      count.classList.toggle('is-over', length > BOOST_MAX_LENGTH);
+      input.disabled = busy;
+      submit.disabled = busy || !raw;
+    };
+
+    const send = async () => {
+      const raw = input.value.trim();
+      const error = boostError(raw);
+      if (busy) return;
+      if (error) {
+        showToast(error);
+        return;
+      }
+      busy = true;
+      update();
+      try {
+        const boost = await apiRequest('POST', `/discourse-boosts/posts/${post.id}/boosts`, { raw });
+        post.boosts = [...(Array.isArray(post.boosts) ? post.boosts : []), boost];
+        post.can_boost = false;
+        if (state.postMenu === menu) hidePostMenu();
+        wrap.remove();
+        const list = renderBoosts(post);
+        const current = article.querySelector(':scope > .ld-preview-boosts');
+        if (current) current.replaceWith(list);
+        else article.querySelector(':scope > .ld-preview-post-footer')?.after(list);
+        showToast('Boost 已发送');
+      } catch (requestError) {
+        showToast(requestError.message || 'Boost 发送失败');
+      } finally {
+        busy = false;
+        update();
+      }
+    };
+
+    input.addEventListener('input', update);
+    input.addEventListener('keydown', (event) => {
+      // 输入法确认候选词的回车不算提交（Safari 此时 isComposing 为 false，keyCode 为 229）。
+      if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
+      event.preventDefault();
+      send();
+    });
+    submit.addEventListener('click', send);
+    button.addEventListener('click', () => {
+      togglePostMenu(menu, button);
+      if (menu.hidden) return;
+      update();
+      input.focus({ preventScroll: true });
+    });
+    return wrap;
   }
 
   function postLikeCount(post) {

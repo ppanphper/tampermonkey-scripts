@@ -81,5 +81,14 @@
 
 - linux.do 启用了 discourse-boosts 插件：楼层可附带短评，帖子 JSON 的 `boosts` 数组每项含已渲染的 `cooked` 和 `user`（已注销用户为 `null`）。原生在操作栏下方渲染为头像加文字的圆角气泡，一个楼层可有几十条。
 - 预览面板在操作栏下方按原顺序渲染全部气泡，与正文左侧对齐；头像链接到用户页，`user` 为空时只显示占位圆点。气泡底色取 `--primary-100`，与原生一致。
-- 只显示，不提供发送、删除和举报。`/posts/by_number` 不返回 `boosts`，树状视图按楼层单独补取的帖子不显示气泡；新 Boost 不实时推送，重新打开话题后显示。2026-11-19 只读核对 `/t/{id}.json` 与 `/t/{id}/posts.json` 均返回该字段。
+- `/posts/by_number` 不返回 `boosts`，树状视图按楼层单独补取的帖子不显示气泡；新 Boost 不实时推送，重新打开话题后显示。2026-11-19 只读核对 `/t/{id}.json` 与 `/t/{id}/posts.json` 均返回该字段。
 - `tests/search-preview.html` 验证气泡内容、头像链接、无用户和无 Boost 楼层。
+
+## 发送
+
+- 接口按 [discourse-boosts](https://github.com/discourse/discourse-boosts) 源码：`POST /discourse-boosts/posts/{post_id}/boosts`，参数 `raw`，成功返回单条 Boost（结构同 `boosts` 数组项）。每人每楼一条，每楼上限为站点设置 `discourse_boosts_max_per_post`（linux.do 为 50），每分钟最多 5 次。
+- 🚀 只在帖子 `can_boost` 为真时显示，位于 🔗 与 ⋯ 之间，与原生顺序一致。弹层复用楼层菜单的开合逻辑（`state.postMenu`），点击外部或 Esc 关闭。
+- 长度校验与服务端一致：按字形簇计数，最多 16 个字；表情短代码和 Unicode 表情各算一个字，最多 5 个。超限时提示，不发请求；输入法确认候选词的回车不提交。服务端以 `errors` 返回的原因直接提示。
+- 成功后把返回值追加到 `post.boosts`、`can_boost` 置为假，就地替换气泡列表并移除 🚀。请求期间切换话题时只更新原楼层。
+- 不提供删除和举报，需在原帖操作。
+- 2026-11-20 在 linux.do 以空内容调用接口，返回 400「Raw 不能为空」，确认路径、CSRF 和 JSON 请求体有效，未产生 Boost。`tests/boosts.html` 用本地模拟接口验证发送流程。

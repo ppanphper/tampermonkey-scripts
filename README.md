@@ -17,7 +17,7 @@
 ## Linux.do 双栏阅读预览
 
 - 安装地址：<https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/linuxdo-double-column/linuxdo-double-column.user.js>
-- 说明：在 linux.do 话题列表、搜索结果和通知中点击标题，在右侧面板预览和交互（楼层/树状评论、回复、点赞、收藏到收藏夹、投票、时间线、阅读时长上报）。完整功能见 [linuxdo-double-column/README.md](linuxdo-double-column/README.md)。
+- 说明：在 linux.do 话题列表、搜索结果和通知中点击标题，在右侧面板预览和交互（楼层/树状评论、回复、点赞、Boost、收藏到收藏夹、投票、时间线、阅读时长上报）。完整功能见 [linuxdo-double-column/README.md](linuxdo-double-column/README.md)。
 - 0.19.1 起从 [linuxdo-double-column](https://github.com/ppanphper/linuxdo-double-column) 仓库迁到这里；已安装的电脑会经旧仓库的 0.19.1 自动切换到本仓库更新，无需重装。
 
 ## LinuxDo 收藏夹（账号同步版）
