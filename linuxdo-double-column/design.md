@@ -81,5 +81,30 @@
 
 - linux.do 启用了 discourse-boosts 插件：楼层可附带短评，帖子 JSON 的 `boosts` 数组每项含已渲染的 `cooked` 和 `user`（已注销用户为 `null`）。原生在操作栏下方渲染为头像加文字的圆角气泡，一个楼层可有几十条。
 - 预览面板在操作栏下方按原顺序渲染全部气泡，与正文左侧对齐；头像链接到用户页，`user` 为空时只显示占位圆点。气泡底色取 `--primary-100`，与原生一致。
-- 只显示，不提供发送、删除和举报。`/posts/by_number` 不返回 `boosts`，树状视图按楼层单独补取的帖子不显示气泡；新 Boost 不实时推送，重新打开话题后显示。2026-11-19 只读核对 `/t/{id}.json` 与 `/t/{id}/posts.json` 均返回该字段。
+- `/posts/by_number` 不返回 `boosts`，树状视图按楼层单独补取的帖子不显示气泡。2026-11-19 只读核对 `/t/{id}.json` 与 `/t/{id}/posts.json` 均返回该字段。
 - `tests/search-preview.html` 验证气泡内容、头像链接、无用户和无 Boost 楼层。
+
+## 发送
+
+- 接口按 [discourse-boosts](https://github.com/discourse/discourse-boosts) 源码：`POST /discourse-boosts/posts/{post_id}/boosts`，参数 `raw`，成功返回单条 Boost（结构同 `boosts` 数组项）。每人每楼一条，每楼上限为站点设置 `discourse_boosts_max_per_post`（linux.do 为 50），每分钟最多 5 次。
+- 🚀 只在帖子 `can_boost` 为真时显示，位于 🔗 与 ⋯ 之间，与原生顺序一致。弹层复用楼层菜单的开合逻辑（`state.postMenu`），点击外部或 Esc 关闭。
+- 长度校验与服务端一致：按字形簇计数，最多 16 个字；表情短代码和 Unicode 表情各算一个字，最多 5 个。超限时提示，不发请求；输入法确认候选词的回车不提交。服务端以 `errors` 返回的原因直接提示。
+- 成功后把返回值合并进 `post.boosts`、`can_boost` 置为假，就地刷新气泡并隐藏 🚀。请求期间切换话题时只更新原楼层。
+- 只要帖子带 `can_boost` 字段就创建 🚀，按值显示或隐藏；删除或实时推送改变 `can_boost` 时无需重绘楼层。
+
+## 删除与实时更新
+
+- 带 `can_delete` 或 `can_flag` 的气泡与原生一致：点击内容显示「举报」「删除」。「删除」调用 `DELETE /discourse-boosts/boosts/{id}`（返回 204）；删除他人的 Boost（版主）需再点一次「确认删除」，对应原生的确认框。删除本人的 Boost 后恢复 🚀。
+- 插件在 `/topic/{topic_id}` 频道推送 `boost_added`（`id` 为帖子 ID，`boost` 含 `id`、`cooked`、`user`）和 `boost_removed`（`boost_id`）。预览复用已订阅的话题频道，按原生回调的规则更新：同 ID 或同用户的 Boost 合并而不重复追加，本人新增时隐藏 🚀，本人删除时恢复。未加载的楼层忽略，之后加载时由接口返回最新数据。
+- 发送结果和本人的推送可能先后到达，两者都走同一合并逻辑，只显示一条。推送的 Boost 不带权限字段：本人的默认可删除、不可举报；未登录时都不可用；其他情况在点击气泡时请求 `GET /discourse-boosts/boosts/{id}` 取得 `can_delete`、`can_flag`、`available_flags`、`user_flag_status`，与原生一致。
+- 判断本人用 `#data-preloaded` 中 `currentUser.id`，只在发送、删除和收到推送时读取。
+
+## 举报
+
+- 接口：`POST /discourse-boosts/boosts/{id}/flags`，参数 `flag_type_id`，需要说明的类型另带 `message`；服务端每分钟最多 4 次。「其他内容」「非法」的说明由服务端以私信发给管理人员，其他类型只进入审核队列。`take_action`、`queue_for_review` 仅限工作人员，不提供。
+- 举报类型取自 `#data-preloaded` 的 `site.post_action_types`，与原生 `flagsAvailable` 相同：`is_flag`、`enabled`、`applies_to` 含 `DiscourseBoosts::Boost`，且在该 Boost 的 `available_flags` 中，按 `position` 排序。linux.do 上有 8 种（含站点自定义的凑字数、AIGC 未截图、违规推广）。名称和说明由站点按语言返回；说明以纯文本作为悬停提示。
+- 弹层复用楼层菜单（`state.postMenu`），默认从「举报」向右展开，右侧放不下时右对齐。选中类型后才能提交。`require_message` 的类型显示说明框：长度在站点设置 `min_personal_message_post_length`（linux.do 为 3）到 500 之间；「非法」另需勾选「我上面所写的内容准确且完整」。
+- 成功后把 `user_flag_status` 记为 `pending`，气泡显示「已举报」且不可再点。审核完成后能否再次举报由服务端按冷却时间判断。失败时提示服务端原因，保留选择和说明。
+- 2026-11-20 在 linux.do 用不存在的类型 999999 调用接口，返回 400「Flag type 不包括在列表中」，该 Boost 的 `user_flag_status` 前后均为空，确认路径与参数格式有效。`tests/boosts.html` 用本地模拟的举报类型和接口验证。
+- 2026-11-20 在 linux.do 只读核对：`GET /discourse-boosts/boosts/{id}` 返回 200，确认该路径存在；`DELETE /discourse-boosts/boosts/0` 返回 404，未删除任何数据。推送格式依据插件源码，`tests/boosts.html` 用模拟的 MessageBus 验证。
+- 2026-11-20 在 linux.do 以空内容调用接口，返回 400「Raw 不能为空」，确认路径、CSRF 和 JSON 请求体有效，未产生 Boost。`tests/boosts.html` 用本地模拟接口验证发送流程。
