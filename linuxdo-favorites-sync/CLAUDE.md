@@ -20,7 +20,7 @@ The upstream UI code still does read → mutate → `saveFavorites(all)`. `saveF
 
 - Pull: `/session/current.json` (account switch clears cache and queue) → `/u/{username}/bookmarks.json?page=N` (20 per page, `{bookmarks: []}` after the last page) → convert → overlay pending ops → write cache. Triggered at startup (older than 10 min), on panel open (older than 2 min), on the bookmarks page, by 立即同步 and by `linuxdo-bookmarks-changed`.
 - Push: ops in `seq` order, 250 ms apart. `upsert` PUTs the name when a bookmark id exists (sends back `reminder_at`; Discourse clears `pinned` on update, so pinned bookmarks get `toggle_pin`), otherwise POSTs; a 400 means it already exists, so it is adopted from `/t/{id}.json` `bookmarks`. `delete` treats 404 as done. An op whose `seq` changed while in flight stays for the next round.
-- Errors: 429 waiting more than 2 min is the daily create limit (`max_bookmarks_per_day`, default 20), which blocks only creates until `createBlockedUntil`. Network errors, 5xx and 403 retry after 60 s. Other 4xx drop the op and re-pull.
+- Errors: 429 waiting more than 2 min is the daily create limit (`max_bookmarks_per_day`, default 20), which blocks only creates until `createBlockedUntil`. Discourse counts every create against that limit before checking the post, so a create that fails still uses a slot. Network errors, 5xx and 403 retry after 60 s, except a 403 with `error_type: invalid_access` (post or topic deleted, or not visible), which never succeeds and is dropped like other 4xx. Only a `["BAD CSRF"]` 403 is resent at once with a fresh token. Other 4xx drop the op and re-pull.
 - Imports (JSON backup, and the upstream `linux_do_favorites` key on first run) only merge: matching bookmarks get the folder, missing ones are created, nothing is deleted. A first-floor post favorite and a topic bookmark count as the same item.
 
 ## Shared with linuxdo-double-column
@@ -33,6 +33,6 @@ The upstream UI code still does read → mutate → `saveFavorites(all)`. `saveF
 
 ## Verification
 
-- `python3 -m http.server 8765 --bind 127.0.0.1`, then open `linuxdo-favorites-sync/tests/index.html?case=main`, `case=legacy`, `case=switch` and `case=original`; each shows PASS. The page runs the real script against a mock Discourse bookmark API that mimics the behaviors above, without contacting linux.do.
+- `python3 -m http.server 8765 --bind 127.0.0.1`, then open `linuxdo-favorites-sync/tests/index.html?case=main`, `case=legacy`, `case=deleted`, `case=switch` and `case=original`; each shows PASS. The page runs the real script against a mock Discourse bookmark API that mimics the behaviors above, without contacting linux.do.
 - linux.do's CSP (`upgrade-insecure-requests`, nonce-only scripts) blocks loading the script from localhost. Verify API assumptions with small same-origin `fetch` calls in a logged-in tab, on a temporary bookmark that the test creates and deletes.
 - The UI keeps upstream's ids (`ld-fav-*`); when the original is still running, `init` shows a toast and stops instead of fighting over the same elements.

@@ -1,5 +1,5 @@
 /* 本地集成回归：用正式脚本和模拟的 Discourse 书签接口验证收藏与账号书签的双向同步。
- * 用法：在项目根目录启动静态服务器，打开 linuxdo-favorites-sync/tests/index.html?case=main|legacy|switch|original */
+ * 用法：在项目根目录启动静态服务器，打开 linuxdo-favorites-sync/tests/index.html?case=main|legacy|switch|original|deleted */
 (async () => {
   'use strict';
   const testCase = new URLSearchParams(location.search).get('case') || 'main';
@@ -55,6 +55,7 @@
     bookmarks: [],
     nextId: 9000,
     createsLeft: Infinity,
+    countedCreates: [],
     requests: [],
   };
   function addServerBookmark(type, targetId, name = '', extra = {}) {
@@ -110,10 +111,13 @@
       if (server.createsLeft <= 0) {
         return json({ errors: ['你执行此操作的次数过多。请等待 23 小时后再试。'], error_type: 'rate_limit', extras: { wait_seconds: 82800, time_left: '23 小时' } }, 429);
       }
+      // 与 BookmarksController#create 一致：先计入每日限额再校验，失败的请求同样占用额度
+      server.createsLeft--;
+      server.countedCreates.push(body.bookmarkable_id);
       const exists = server.bookmarks.some(bookmark => bookmark.bookmarkable_type === body.bookmarkable_type && bookmark.bookmarkable_id === body.bookmarkable_id);
       if (exists) return json({ errors: ['你已经为此帖子添加了书签'] }, 400);
-      if (body.bookmarkable_type === 'Post' && !posts[body.bookmarkable_id]) return json({ errors: ['帖子不存在'] }, 400);
-      server.createsLeft--;
+      const visible = body.bookmarkable_type === 'Post' ? posts[body.bookmarkable_id] : topics[body.bookmarkable_id];
+      if (!visible) return json({ errors: ['您没有权限查看请求的资源。'], error_type: 'invalid_access' }, 403);
       const bookmark = addServerBookmark(body.bookmarkable_type, body.bookmarkable_id, body.name || '');
       bookmark.created_at = bookmark.updated_at = new Date().toISOString();
       return json({ success: 'OK', id: bookmark.id });
@@ -148,6 +152,7 @@
     const topic = url.pathname.match(/^\/t\/(\d+)\.json$/);
     if (topic) {
       const topicId = Number(topic[1]);
+      if (!topics[topicId]) return json({ errors: ['找不到请求的资源。'], error_type: 'not_found' }, 404);
       const bookmarks = server.bookmarks.filter(bookmark => bookmark.topic_id === topicId)
         .map(({ id, bookmarkable_id, bookmarkable_type, name, reminder_at, pinned }) => ({ id, bookmarkable_id, bookmarkable_type, name, reminder_at, pinned }));
       return json({ id: topicId, title: topics[topicId]?.title, bookmarks, post_stream: { posts: [{ cooked: '<p>楼主</p>' }] } });
@@ -357,6 +362,25 @@
     assert(gm.get('linux_do_favorites'), '原版数据保留不删');
   }
 
+  async function runDeleted() {
+    // 原版收藏里的话题或帖子已被删除：新建请求返回 403 invalid_access，且已占用每日额度
+    server.createsLeft = 4;
+    gm.set('linux_do_favorites', JSON.stringify({
+      '901_901': { id: '901_901', topicId: '901', title: '已删除的话题', url: '/t/topic/901', folder: '开发调优', addedAt: 1690000000000 },
+      '105_5999': { id: '105_5999', topicId: '105', postId: '5999', postNumber: '3', isPost: true, title: '已删除的回复', url: '/t/topic/105/3', folder: '开发调优', addedAt: 1690000001000 },
+      '102_5103': { id: '102_5103', topicId: '102', postId: '5103', postNumber: '3', isPost: true, title: '话题 102 - #3', url: '/t/topic/102/3', folder: '开发调优', addedAt: 1690000002000 },
+      '106_5602': { id: '106_5602', topicId: '106', postId: '5602', postNumber: '2', isPost: true, title: '话题 106 - #2', url: '/t/topic/106/2', folder: '默认收藏', addedAt: 1690000003000 },
+    }));
+    gm.set('linux_do_folders', JSON.stringify(['默认收藏', '开发调优']));
+    await startScript();
+    await until(() => settled() && server.bookmarks.length === 2, '失效收藏之后的收藏照常新建');
+    const counted = id => server.countedCreates.filter(target => target === id).length;
+    assert(counted(901) === 1 && counted(5999) === 1, '失效收藏只请求一次，不重发也不重试');
+    assert(serverNames()['Post:5103'] === '[开发调优]' && serverNames()['Post:5602'] === '', '每日额度留给有效收藏');
+    await until(() => !readFavorites()['901_901'] && !readFavorites()['105_5999'], '重新拉取后移除失效收藏');
+    assert(toasts.some(text => text.includes('「已删除的话题」') && text.includes('已删除或无权查看')), '提示哪条收藏已失效');
+  }
+
   async function runSwitch() {
     addServerBookmark('Topic', 101, '[开发调优]');
     gm.set('linux_do_bookmark_sync_meta', JSON.stringify({ username: 'other_user', lastPullAt: 0 }));
@@ -380,7 +404,7 @@
   }
 
   try {
-    await ({ main: runMain, legacy: runLegacy, switch: runSwitch, original: runOriginal })[testCase]();
+    await ({ main: runMain, legacy: runLegacy, deleted: runDeleted, switch: runSwitch, original: runOriginal })[testCase]();
     statusEl.textContent = `PASS（${testCase}）`;
     statusEl.style.color = '#126637';
   } catch (error) {
