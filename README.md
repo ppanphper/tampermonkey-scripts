@@ -25,7 +25,7 @@
 - 安装地址：<https://raw.githubusercontent.com/ppanphper/tampermonkey-scripts/main/linuxdo-favorites-sync/linuxdo-favorites-sync.user.js>
 - 说明：linux.do 自定义收藏夹，收藏保存为账号书签，收藏夹名写在书签名称开头（`[收藏夹] 备注`），登录同一账号的设备都能看到。基于 eamooooon 的 [LinuxDo 收藏夹](https://scriptcat.org/scripts/code/6125/LinuxDo%20%E6%94%B6%E8%97%8F%E5%A4%B9.user.js) 1.0.9 修改，原脚本未声明许可证。
 - `@name` 和 `@namespace` 与原版相同，安装后覆盖原版并保留数据；首次同步时把原版的本地收藏合并进书签，不删除任何已有书签。如果扩展列表里出现两个同名脚本，删掉更新地址指向 scriptcat.org 的那个。
-- Discourse 默认每人每天最多新建 20 个书签，超出的收藏在面板中显示「等待同步」，限额恢复后自动补上。取消收藏和删除收藏夹会删除对应书签。
+- Discourse 默认每人每天最多新建 20 个书签，超出的收藏在面板中显示「等待同步」，限额恢复后自动补上；原帖已删除或无权查看的收藏无法同步，会提示后移出收藏。取消收藏和删除收藏夹会删除对应书签。
 - 与上面的 Linux.do 双栏阅读预览共用收藏夹，在双栏里收藏时可以直接选择收藏夹。
 
 在 Tampermonkey 中打开安装地址即可安装；脚本元数据已配置 `@updateURL` 和 `@downloadURL`，后续推送新版本后可以自动更新。
