@@ -37,6 +37,12 @@
     @keyframes holographic { 50% { background-position:100% 50%; } }
     .post-avatar:has(a.main-avatar[data-user-card="local_test"])::after { content:""; position:absolute; inset:1px 0 0 1px; border-radius:50%; box-shadow:rgb(0,174,255) 0 0 20px; pointer-events:none; }
     img.avatar[src*="square"] { border-radius:10%; }
+    /* Discourse 核心的分类与标签样式（2026-11-20 摘录），验证面板隐藏规则与布局不被站点规则覆盖 */
+    .topic-category { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+    .badge-category__wrapper { display:flex; font-size:.87em; color:var(--primary-high); text-decoration:none; }
+    .topic-header-extra { display:flex; align-items:center; gap:8px; }
+    .discourse-tags { display:inline-flex; flex-wrap:wrap; gap:4px; margin:0; padding:0; list-style:none; font-size:.87em; }
+    .discourse-tag.box { display:block; padding:2px 8px; background:#e9e9e9; color:#444; text-decoration:none; }
   </style>
 </head>
 <body class="search-page">

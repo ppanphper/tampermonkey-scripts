@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Linux.do 双栏阅读预览
 // @namespace    https://linux.do/
-// @version      0.21.2
+// @version      0.21.3
 // @description  在 Linux.do 话题列表、搜索结果和通知中用右侧面板预览帖子（支持原始楼层与树状评论双视图、热门排序、回复/点赞/话题与楼层收藏/投票/时间线及阅读时长上报）
 // @match        https://linux.do/*
 // @homepageURL  https://github.com/ppanphper/tampermonkey-scripts
@@ -86,6 +86,7 @@
     timelineDragging: false,
     observer: null,
     title: null,
+    topicCategory: null,
     status: null,
     toast: null,
     composer: null,
@@ -533,9 +534,23 @@
         padding-right: 18px;
       }
 
-      #${PANEL_ID} .ld-preview-heading {
+      #${PANEL_ID} .ld-preview-title-block {
         min-width: 0;
         flex: 1;
+        padding: 6px 0;
+      }
+
+      /* 分类徽章与标签的外观由站点 CSS 按原生类名生效 */
+      #${PANEL_ID} .ld-preview-topic-category {
+        margin-top: 4px;
+        font-size: 14px;
+      }
+
+      #${PANEL_ID} .ld-preview-topic-category[hidden] {
+        display: none;
+      }
+
+      #${PANEL_ID} .ld-preview-heading {
         overflow: hidden;
         font-size: 14px;
         font-weight: 600;
@@ -2302,6 +2317,14 @@
       reloadCurrentTopic();
     });
 
+    const topicCategory = document.createElement('div');
+    topicCategory.className = 'ld-preview-topic-category topic-category';
+    topicCategory.hidden = true;
+
+    const titleBlock = document.createElement('div');
+    titleBlock.className = 'ld-preview-title-block';
+    titleBlock.append(heading, topicCategory);
+
     const content = document.createElement('div');
     content.className = 'ld-preview-content';
 
@@ -2585,7 +2608,7 @@
     composerActions.append(composerCancel, composerSend);
     composer.append(composerTarget, composerTools, composerInput, composerFileInput, composerPreview, composerError, composerActions);
 
-    toolbar.append(heading, topicBookmarkWrap, copyTopicButton, replyButton, treeButton, originalButton, refreshButton, fullscreenButton, closeButton);
+    toolbar.append(titleBlock, topicBookmarkWrap, copyTopicButton, replyButton, treeButton, originalButton, refreshButton, fullscreenButton, closeButton);
     scroll.append(topSentinel, list, sentinel, replyBar);
     content.append(scroll, timeline, status, toast);
     panel.append(resizer, toolbar, viewBar, treeFocusBar, content, composer);
@@ -2606,6 +2629,7 @@
     state.notifMenu = notifMenu;
     state.notifButton = notifButton;
     state.title = heading;
+    state.topicCategory = topicCategory;
     state.topicBookmarkButton = topicBookmarkButton;
     state.topicBookmarkMenu = topicBookmarkMenu;
     state.status = status;
@@ -5378,6 +5402,54 @@
     }
   }
 
+  // 依次尝试模块路径，Discourse 改名或移动模块时兼容新旧版本。
+  function requireDiscourse(...names) {
+    for (const name of names) {
+      try {
+        const module = window.require?.(name);
+        if (module) return module;
+      } catch {
+        // Not in this Discourse version.
+      }
+    }
+    return null;
+  }
+
+  // 原生标题下方的分类（Lv 级别是子分类，受限分类带锁）和标签，用页面自带的 Discourse 函数生成，
+  // 分类颜色、图标和标签图标组件与原生一致。页面不提供这些函数时不显示。
+  function topicCategoryHtml(data) {
+    try {
+      const Topic = requireDiscourse('discourse/models/topic')?.default;
+      const categoryLinkHTML = requireDiscourse(
+        'discourse/ui-kit/helpers/d-category-link',
+        'discourse/helpers/category-link',
+      )?.categoryLinkHTML;
+      const renderTags = requireDiscourse('discourse/lib/render-tags')?.default;
+      if (!Topic?.create || !categoryLinkHTML || !renderTags) return '';
+      const topic = Topic.create({
+        id: data.id,
+        title: data.title,
+        fancy_title: data.fancy_title,
+        slug: data.slug,
+        archetype: data.archetype,
+        category_id: data.category_id,
+        tags: data.tags,
+        tags_descriptions: data.tags_descriptions,
+      });
+      const category = topic.category;
+      const tags = String(renderTags(topic, { mode: 'list' }) || '');
+      return (category ? String(categoryLinkHTML(category, { ancestors: category.predecessors, hideParent: true })) : '')
+        + (tags ? `<div class="topic-header-extra"><div class="list-tags">${tags}</div></div>` : '');
+    } catch {
+      return '';
+    }
+  }
+
+  function setTopicCategory(html) {
+    state.topicCategory.innerHTML = html;
+    state.topicCategory.hidden = !html;
+  }
+
   function renderTopic(data, topicUrl) {
     const posts = data.post_stream?.posts || [];
     state.stream = data.post_stream?.stream || [];
@@ -5428,6 +5500,7 @@
     const topicTitle = (data.title || '').trim();
     state.title.textContent = topicTitle || '帖子预览';
     state.title.title = topicTitle || topicUrl;
+    setTopicCategory(topicCategoryHtml(data));
     state.replyBar.hidden = false;
     state.timelineStart.textContent = formatDate(state.topicMeta.createdAt) || '开始';
     state.timelineLast.textContent = formatRelative(state.topicMeta.lastPostedAt) || '最后';
@@ -5508,6 +5581,7 @@
     state.panel.classList.add('is-loading');
     state.title.textContent = '正在加载帖子...';
     state.title.title = topicUrl;
+    setTopicCategory('');
     if (!cached) setStatus('正在加载帖子...');
 
     try {
@@ -5984,6 +6058,7 @@
     setStatus('');
     state.title.textContent = '帖子预览';
     state.title.title = '帖子预览';
+    setTopicCategory('');
     requestAnimationFrame(() => window.scrollTo(0, state.savedScrollY));
 
     if (shouldGoBack) {
