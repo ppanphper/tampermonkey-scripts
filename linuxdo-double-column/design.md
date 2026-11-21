@@ -56,6 +56,15 @@
 - 复制成功和失败沿用现有 toast；剪贴板 API 不可用时退回 `execCommand('copy')`。
 - `tests/search-preview.html` 验证话题与楼层链接的分享参数、设置关闭和未登录时不附加，以及加载中切换话题时复制新话题。
 
+# 标题下方的分类与标签
+
+- 原生话题标题下方显示分类和标签：linux.do 的级别是子分类（如「福利羊毛, Lv2」），受限分类带锁图标；标签由主题组件加图标和配色。预览面板在标题下另起一行显示同样的内容。
+- 按原生 [topic-category](https://github.com/discourse/discourse/blob/main/frontend/discourse/app/components/topic-category.gjs) 生成：用话题 JSON 的 `category_id`、`tags` 经 `Topic.create` 建模型，分类用 `categoryLinkHTML(category, { ancestors: category.predecessors, hideParent: true })`，标签用 `renderTags(topic, { mode: 'list' })` 并包在 `.topic-header-extra > .list-tags` 中。分类颜色、图标和标签图标组件因此与原生一致，外观由站点 CSS 按原生类名生效。
+- 分类函数在 linux.do 当前版本（2026.11.0-latest）位于 `discourse/helpers/category-link`，Discourse 主干已移到 `discourse/ui-kit/helpers/d-category-link`，两个路径依次尝试。页面不提供这些函数时不显示该行，其余预览不受影响。
+- 信息行带站点的 `topic-category` 类以沿用其弹性布局，隐藏时需自行声明 `display: none`，否则站点的 `display: flex` 会覆盖 `hidden`。加载新话题和关闭面板时清空。
+- 分类和标签链接沿用面板的规则，在新标签页打开。
+- 2026-11-20 在 linux.do 注入新函数和样式渲染预览面板：「搞七捻三 / 搞七捻三, Lv1」与带图标的标签显示正常，工具栏高 56px。`tests/search-preview.html` 模拟 Discourse 模块和核心样式，验证调用参数、结构、新旧模块路径、加载中清空、无分类时隐藏和函数缺失时的回退。
+
 # 用户名样式
 
 - linux.do 主题按 Discourse 原生类名给用户名加样式（2026-11-20 核对主题 138）：`.staff > a`、`.admin > a`、`.category-moderator > a` 名字为蓝色；`span.user-title--种子用户`、`破界者`、`premium` 头衔为流光渐变动画；`span.user-title--g-merchant a.user-group` 商家群组头衔为金色。

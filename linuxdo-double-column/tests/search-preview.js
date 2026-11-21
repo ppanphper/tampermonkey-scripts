@@ -31,6 +31,26 @@
     }
     return { users, badges };
   }
+  // 模拟页面的 Discourse 模块：话题 100 在「福利羊毛 / 福利羊毛, Lv2」子分类并带标签。分类函数返回 SafeString 形式的对象。
+  const categories = { 36:{ id:36, name:'福利羊毛', slug:'welfare' } };
+  categories[61] = { id:61, name:'福利羊毛, Lv2', slug:'welfare-lv2', predecessors:[categories[36]] };
+  const categoryCalls = [];
+  const badgeHtml = category => `<a class="badge-category__wrapper" href="/c/${category.slug}/${category.id}"><span class="badge-category" data-category-id="${category.id}"><span class="badge-category__name">${category.name}</span></span></a>`;
+  const categoryLinkModule = { categoryLinkHTML:(category, options) => {
+    categoryCalls.push({ id:category.id, ancestors:(options?.ancestors || []).map(item => item.id), hideParent:options?.hideParent });
+    const html = [...(options?.ancestors || []), category].map(badgeHtml).join('');
+    return { toString:() => html };
+  } };
+  const discourseModules = {
+    'discourse/models/topic':{ default:{ create:props => ({ ...props, category:categories[props.category_id] }) } },
+    'discourse/helpers/category-link':categoryLinkModule,
+    'discourse/lib/render-tags':{ default:(topic, params) => params?.mode === 'list' && topic.tags?.length
+      ? `<ul class='discourse-tags'>${topic.tags.map(tag => `<li><a class='discourse-tag box' href='/tag/${tag.slug}/${tag.id}'>${tag.name}</a></li>`).join('')}</ul>` : '' },
+  };
+  window.require = name => {
+    if (!discourseModules[name]) throw new Error(`Could not find module \`${name}\``);
+    return discourseModules[name];
+  };
   function postsFor(id) {
     return Array.from({ length:60 }, (_, i) => ({
       id:Number(id) * 1000 + i + 1, post_number:i < 2 ? i + 1 : i + 2,
@@ -58,7 +78,8 @@
       if (id === delayTopic) await new Promise(resolve => { releaseTopic = resolve; });
       if (id === failTopic) return Response.json({}, { status:500 });
       const posts = postsFor(id);
-      return Response.json({ id:Number(id), slug:'search-demo', title:`搜索预览 · 话题 ${id}`, highest_post_number:61,
+      const classified = id === '100' ? { category_id:61, tags:[{ id:444, name:'人工智能', slug:'444-tag' }, { id:273, name:'Gemini', slug:'gemini' }] } : {};
+      return Response.json({ id:Number(id), slug:'search-demo', title:`搜索预览 · 话题 ${id}`, highest_post_number:61, ...classified,
         last_read_post_number:12, post_stream:{ posts:posts.slice(0,20), stream:posts.map(post => post.id) }, user_badges:userBadgesFor(posts.slice(0,20)) });
     }
     const batch = url.pathname.match(/^\/t\/(\d+)\/posts\.json$/);
@@ -126,6 +147,19 @@
       assert(!nativeClicks.includes('first-result'), '点击继续传播到站点');
       assert(state.parentUrl === originalUrl && location.search === new URL(originalUrl).search, '搜索条件丢失');
       assert(history.state.fixture && history.state.ldDoubleColumn, '历史状态没有保留');
+    });
+    const topicCategoryRow = () => state.panel.querySelector('.ld-preview-title-block > .ld-preview-heading + .ld-preview-topic-category.topic-category');
+    await test('标题下方按原生结构显示父分类、Lv 子分类和标签', async () => {
+      const row = topicCategoryRow();
+      assert(row && !row.hidden && getComputedStyle(row).display === 'flex', '标题下方没有分类信息行');
+      assert(JSON.stringify(categoryCalls.at(-1)) === JSON.stringify({ id:61, ancestors:[36], hideParent:true }), `分类渲染参数错误：${JSON.stringify(categoryCalls.at(-1))}`);
+      const names = [...row.querySelectorAll(':scope > a.badge-category__wrapper .badge-category__name')].map(item => item.textContent);
+      assert(names.join('|') === '福利羊毛|福利羊毛, Lv2', `分类徽章错误：${names.join('|')}`);
+      const tags = [...row.querySelectorAll(':scope > .topic-header-extra > .list-tags > ul.discourse-tags a.discourse-tag')];
+      assert(tags.map(tag => tag.textContent).join('|') === '人工智能|Gemini' && tags[0].getAttribute('href') === '/tag/444-tag/444', '标签渲染错误');
+      const heading = state.title.getBoundingClientRect(), rect = row.getBoundingClientRect();
+      assert(rect.top >= heading.bottom - 1 && rect.height > 0, '分类信息行不在标题下方');
+      assert(state.title.textContent === '搜索预览 · 话题 100', '标题文本被改动');
     });
     await test('楼层下方显示 Boost 气泡，已注销用户不显示头像链接', async () => {
       const bubbles = [...article(1).querySelectorAll(':scope > .ld-preview-boosts > .ld-preview-boost')];
@@ -277,6 +311,36 @@
       button.click(); await until(() => copied.length === before + 1);
       assert(copied.at(-1) === `${location.origin}/t/topic/700?u=local_test`, `加载中复制了上一个话题：${copied.at(-1)}`);
       releaseTopic(); delayTopic = ''; await loaded(700); link.setAttribute('href', href);
+    });
+    await test('加载中清空分类信息，没有分类和标签的话题不显示信息行', async () => {
+      const link = $('#reply-result'), href = link.getAttribute('href');
+      click('#first-result'); await loaded(100); assert(!topicCategoryRow().hidden, '话题 100 应显示分类');
+      delayTopic = '800'; releaseTopic = null; link.href = '/t/search-demo/800/1'; click('#reply-result');
+      await until(() => Boolean(releaseTopic));
+      assert(topicCategoryRow().hidden && !topicCategoryRow().childElementCount, '加载中仍显示上一个话题的分类');
+      releaseTopic(); delayTopic = ''; await loaded(800); link.setAttribute('href', href);
+      assert(topicCategoryRow().hidden && getComputedStyle(topicCategoryRow()).display === 'none', '没有分类和标签时应隐藏信息行');
+    });
+    await test('Discourse 新版模块路径可用，页面不提供渲染函数时不显示', async () => {
+      delete discourseModules['discourse/helpers/category-link'];
+      discourseModules['discourse/ui-kit/helpers/d-category-link'] = categoryLinkModule;
+      try {
+        click('#first-result'); await loaded(100);
+        assert(!topicCategoryRow().hidden && topicCategoryRow().textContent.includes('福利羊毛, Lv2'), '新版模块路径下没有显示分类');
+        const original = window.require; window.require = undefined;
+        try {
+          click('#legacy-title'); await loaded(300); click('#first-result'); await loaded(100);
+          assert(topicCategoryRow().hidden && state.title.textContent === '搜索预览 · 话题 100', '缺少渲染函数时应隐藏信息行且正常显示话题');
+        } finally { window.require = original; }
+      } finally {
+        delete discourseModules['discourse/ui-kit/helpers/d-category-link'];
+        discourseModules['discourse/helpers/category-link'] = categoryLinkModule;
+      }
+    });
+    await test('关闭面板清空分类信息', async () => {
+      click('#legacy-title'); await loaded(300); click('#first-result'); await loaded(100);
+      assert(!topicCategoryRow().hidden, '话题 100 应显示分类');
+      await close(); assert(topicCategoryRow().hidden && !topicCategoryRow().childElementCount, '关闭后残留分类信息');
     });
     await test('双栏收窄后长搜索标题无横向溢出，关闭恢复布局', async () => {
       await close(); state.viewMode = 'original'; click('#first-result'); await loaded(100); await settle();
